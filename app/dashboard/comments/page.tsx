@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { SyncNowButton } from "@/components/automation/sync-now-button";
+import { CommentsFeed } from "@/components/comments/comments-feed";
 
 interface MemberRow { workspace_id: string; }
 interface CommentEventRow {
@@ -113,115 +114,8 @@ export default async function CommentsPage() {
         </Card>
       </div>
 
-      {/* Comment Activity Feed */}
-      {events.length > 0 ? (
-        <div className="space-y-3">
-          {events.map(event => {
-            const isSuccess = event.status === "success" || event.public_reply_status === "success";
-            const isFailed = event.status === "failed";
-            const dateStr = new Date(event.created_at).toLocaleString();
-
-            return (
-              <Card key={event.id} className="hover:shadow-sm transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="flex items-start gap-3">
-                      <div className="h-9 w-9 rounded-full bg-gradient-to-br from-pink-500 to-orange-400 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                        {event.commenter_username ? event.commenter_username[0].toUpperCase() : "U"}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-slate-900">
-                            @{event.commenter_username || "anonymous_user"}
-                          </span>
-                          {event.instagram_accounts && (
-                            <span className="text-xs text-slate-400">
-                              on @{event.instagram_accounts.username}
-                            </span>
-                          )}
-                          <span className="text-xs text-slate-400">• {dateStr}</span>
-                        </div>
-
-                        <p className="text-sm text-slate-800 mt-1 font-medium bg-slate-50 rounded-lg px-2.5 py-1.5 inline-block">
-                          &ldquo;{event.comment_text}&rdquo;
-                        </p>
-
-                        <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
-                          {event.keyword_matched && (
-                            <Badge variant="outline" className="text-violet-700 bg-violet-50/70 border-violet-200">
-                              Keyword: {event.keyword_matched}
-                            </Badge>
-                          )}
-                          {event.automations && (
-                            <span className="text-slate-500">
-                              Rule: <Link href={`/dashboard/automations/${event.automations.id}`} className="text-violet-600 hover:underline">{event.automations.name}</Link>
-                            </span>
-                          )}
-                          {event.instagram_media?.permalink && (
-                            <a
-                              href={event.instagram_media.permalink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-slate-400 hover:text-slate-700 inline-flex items-center gap-1"
-                            >
-                              <ExternalLink className="h-3 w-3" /> View Reel/Post
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Status Badges */}
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-slate-400">Auto-Like:</span>
-                          <span className="inline-flex items-center gap-0.5 text-xs text-pink-600 font-medium">
-                            <Heart className="h-3 w-3 fill-pink-500 text-pink-500" /> Done
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-slate-400">Public Reply:</span>
-                          <Badge variant={event.public_reply_status === "success" ? "success" : event.public_reply_status === "failed" ? "destructive" : "secondary"}>
-                            {event.public_reply_status || "Pending"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-slate-400">Private DM:</span>
-                          <Badge variant={event.dm_status === "success" ? "success" : event.dm_status === "failed" ? "destructive" : "secondary"}>
-                            {event.dm_status || "Pending"}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {event.error_message && (
-                    <div className="mt-3 p-2 bg-red-50 rounded-lg text-xs text-red-600">
-                      Error: {event.error_message}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <Card className="border-dashed border-2 border-slate-200">
-          <CardContent className="flex flex-col items-center py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 mb-4">
-              <MessageCircle className="h-7 w-7 text-violet-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">No comment activity yet</h3>
-            <p className="text-sm text-slate-500 max-w-sm mb-6">
-              When users comment on your Instagram Reels or Posts matching your trigger keywords, they will appear here with live reply and DM tracking.
-            </p>
-            <Button asChild>
-              <Link href="/dashboard/automations/new">Create Your First Automation</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* Interactive Comment Activity Feed */}
+      <CommentsFeed initialEvents={events as any} />
     </div>
   );
 }

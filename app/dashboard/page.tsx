@@ -6,8 +6,9 @@ import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Mail, Zap, BarChart2, Plus, ArrowRight } from "lucide-react";
+import { MessageCircle, Mail, Zap, BarChart2, Plus, ArrowRight, Activity, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { SyncNowButton } from "@/components/automation/sync-now-button";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -28,11 +29,15 @@ export default async function DashboardPage() {
   const [
     { count: totalComments },
     { count: activeAutomations },
+    { count: totalRepliesSent },
+    { count: totalDmsSent },
     { data: recentEvents },
     { data: connectedAccounts },
   ] = await Promise.all([
     (supabase.from("automation_events") as any).select("*", { count: "exact", head: true }).eq("workspace_id", workspaceId || ""),
     (supabase.from("automations") as any).select("*", { count: "exact", head: true }).eq("workspace_id", workspaceId || "").eq("status", "active"),
+    (supabase.from("automation_events") as any).select("*", { count: "exact", head: true }).eq("workspace_id", workspaceId || "").eq("public_reply_status", "success"),
+    (supabase.from("automation_events") as any).select("*", { count: "exact", head: true }).eq("workspace_id", workspaceId || "").eq("dm_status", "success"),
     (supabase.from("automation_events") as any)
       .select("id, status, comment_text, commenter_username, created_at, automation_id")
       .eq("workspace_id", workspaceId || "")
@@ -44,8 +49,8 @@ export default async function DashboardPage() {
       .eq("status", "connected"),
   ]);
 
-  const repliesSent = recentEvents?.filter((e: any) => e.status === "success").length || 0;
-  const dmsSent = Math.floor(repliesSent * 0.8); // approximation
+  const repliesSent = totalRepliesSent || (recentEvents?.filter((e: any) => e.status === "success").length || 0);
+  const dmsSent = totalDmsSent || 0;
 
   const activityItems = (recentEvents || []).map((e: any) => ({
     id: e.id,
@@ -64,21 +69,37 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            {greeting} ☀️
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-slate-900">
+              {greeting} ☀️
+            </h1>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Engine Online • 15s Polling
+            </span>
+          </div>
           <p className="text-sm text-slate-500 mt-0.5">
-            Here&apos;s what&apos;s happening with your Instagram.
+            Here&apos;s your live Instagram engagement & automated DM conversions.
           </p>
         </div>
-        {!connectedAccounts?.length && (
-          <Button asChild>
-            <Link href="/dashboard/instagram">
-              <Plus className="h-4 w-4" />
-              Connect Instagram
-            </Link>
-          </Button>
-        )}
+        <div className="flex items-center gap-2.5">
+          <SyncNowButton />
+          {connectedAccounts?.length ? (
+            <Button asChild>
+              <Link href="/dashboard/automations/new">
+                <Plus className="h-4 w-4" />
+                New Automation
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link href="/dashboard/instagram">
+                <Plus className="h-4 w-4" />
+                Connect Instagram
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats grid */}

@@ -8,6 +8,7 @@ import {
   ExternalLink, UserCheck
 } from "lucide-react";
 import Link from "next/link";
+import { MessagesFeed } from "@/components/messages/messages-feed";
 
 interface MemberRow { workspace_id: string; }
 interface DmEventRow {
@@ -109,94 +110,8 @@ export default async function MessagesPage() {
         </Card>
       </div>
 
-      {/* DMs Log */}
-      {events.length > 0 ? (
-        <div className="space-y-3">
-          {events.map(event => {
-            const isSuccess = event.dm_status === "success";
-            const dateStr = new Date(event.created_at).toLocaleString();
-
-            return (
-              <Card key={event.id} className="hover:shadow-sm transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="flex items-start gap-3">
-                      <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-600 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                        {event.commenter_username ? event.commenter_username[0].toUpperCase() : "U"}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-slate-900">
-                            To: @{event.commenter_username || "Instagram User"}
-                          </span>
-                          {event.instagram_accounts && (
-                            <span className="text-xs text-slate-400">
-                              From: @{event.instagram_accounts.username}
-                            </span>
-                          )}
-                          <span className="text-xs text-slate-400">• {dateStr}</span>
-                        </div>
-
-                        {/* Template preview */}
-                        {event.automations?.private_message && (
-                          <div className="mt-2 p-3 bg-violet-50/70 border border-violet-100 rounded-xl text-xs text-slate-800 whitespace-pre-wrap max-w-xl">
-                            {event.automations.private_message
-                              .replace("{{first_name}}", event.commenter_username?.split("_")[0] || "there")
-                              .replace("{{username}}", event.commenter_username || "there")}
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 flex-wrap">
-                          <span>
-                            Trigger: Commented &ldquo;<strong className="text-slate-700">{event.comment_text}</strong>&rdquo;
-                          </span>
-                          {event.keyword_matched && (
-                            <Badge variant="outline" className="text-violet-700 bg-white">
-                              Keyword: {event.keyword_matched}
-                            </Badge>
-                          )}
-                          {event.automations && (
-                            <Link href={`/dashboard/automations/${event.automations.id}`} className="text-violet-600 hover:underline">
-                              {event.automations.name}
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge variant={isSuccess ? "success" : event.dm_status === "failed" ? "destructive" : "secondary"}>
-                        {isSuccess ? "Delivered to Inbox" : event.dm_status || "Pending"}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {event.error_message && (
-                    <div className="mt-3 p-2 bg-red-50 rounded-lg text-xs text-red-600">
-                      Reason: {event.error_message}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <Card className="border-dashed border-2 border-slate-200">
-          <CardContent className="flex flex-col items-center py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 mb-4">
-              <Mail className="h-7 w-7 text-violet-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">No DM dispatches yet</h3>
-            <p className="text-sm text-slate-500 max-w-sm mb-6">
-              When users comment keywords on your Reels & Posts, our automated Private Reply engine will dispatch direct messages straight into their inbox.
-            </p>
-            <Button asChild>
-              <Link href="/dashboard/automations/new">Create DM Automation</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* Interactive DMs Log */}
+      <MessagesFeed initialEvents={events as any} />
     </div>
   );
 }
