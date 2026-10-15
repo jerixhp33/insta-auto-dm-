@@ -31,7 +31,25 @@ export async function POST(request: NextRequest) {
   catch { return NextResponse.json({ error: "Could not read body" }, { status: 400 }); }
 
   const signature = request.headers.get("x-hub-signature-256");
-  if (!validateWebhookSignature(rawBody, signature)) return new NextResponse("Unauthorized", { status: 401 });
+  const isValid = validateWebhookSignature(rawBody, signature);
+
+  const supabase = await createServiceClient();
+
+  // Log raw incoming request to activity_logs
+  await (supabase.from("activity_logs") as any).insert({
+    workspace_id: "1da6df79-6133-4dd2-9312-00df190dc820",
+    action: isValid ? "webhook_received" : "webhook_signature_failed",
+    metadata: {
+      signature,
+      isValid,
+      body: rawBody.slice(0, 1000),
+    },
+  }).catch(() => null);
+
+  if (!isValid) {
+    console.warn("[Webhook] Invalid signature:", signature);
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
 
   let payload: WebhookPayload;
   try { payload = JSON.parse(rawBody); }
