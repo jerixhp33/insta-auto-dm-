@@ -18,11 +18,18 @@ const IG_REQUIRED_SCOPES = [
   "instagram_business_manage_comments",
 ].join(",");
 
-export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "instagram"): string {
+export const getMetaAppId = () => process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "";
+export const getMetaAppSecret = () => process.env.META_APP_SECRET || "";
+export const getMetaRedirectUri = () => process.env.META_REDIRECT_URI || "http://localhost:3000/api/instagram/callback";
+
+export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "facebook"): string {
+  const appId = getMetaAppId();
+  const redirectUri = getMetaRedirectUri();
+
   if (provider === "facebook") {
     const params = new URLSearchParams({
-      client_id: process.env.META_APP_ID!,
-      redirect_uri: process.env.META_REDIRECT_URI!,
+      client_id: appId,
+      redirect_uri: redirectUri,
       scope: FB_REQUIRED_SCOPES,
       response_type: "code",
       state,
@@ -32,8 +39,8 @@ export function generateOAuthUrl(state: string, provider: "instagram" | "faceboo
 
   // Direct Instagram Login (Option A) - prompts directly on Instagram without requiring Facebook
   const params = new URLSearchParams({
-    client_id: process.env.META_APP_ID!,
-    redirect_uri: process.env.META_REDIRECT_URI!,
+    client_id: appId,
+    redirect_uri: redirectUri,
     scope: IG_REQUIRED_SCOPES,
     response_type: "code",
     state,
@@ -85,10 +92,10 @@ export async function exchangeInstagramCodeForToken(code: string): Promise<{
   permissions?: string[];
 }> {
   const formData = new FormData();
-  formData.append("client_id", process.env.META_APP_ID!);
-  formData.append("client_secret", process.env.META_APP_SECRET!);
+  formData.append("client_id", getMetaAppId());
+  formData.append("client_secret", getMetaAppSecret());
   formData.append("grant_type", "authorization_code");
-  formData.append("redirect_uri", process.env.META_REDIRECT_URI!);
+  formData.append("redirect_uri", getMetaRedirectUri());
   formData.append("code", code);
 
   const response = await fetch("https://api.instagram.com/oauth/access_token", {
@@ -112,7 +119,7 @@ export async function getLongLivedInstagramToken(shortLivedToken: string): Promi
 }> {
   const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
-    client_secret: process.env.META_APP_SECRET!,
+    client_secret: getMetaAppSecret(),
     access_token: shortLivedToken,
   });
 
@@ -163,9 +170,9 @@ export async function exchangeCodeForToken(code: string): Promise<{
   expires_in?: number;
 }> {
   const params = new URLSearchParams({
-    client_id: process.env.META_APP_ID!,
-    client_secret: process.env.META_APP_SECRET!,
-    redirect_uri: process.env.META_REDIRECT_URI!,
+    client_id: getMetaAppId(),
+    client_secret: getMetaAppSecret(),
+    redirect_uri: getMetaRedirectUri(),
     code,
   });
 
@@ -189,8 +196,8 @@ export async function getLongLivedToken(shortLivedToken: string): Promise<{
 }> {
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
-    client_id: process.env.META_APP_ID!,
-    client_secret: process.env.META_APP_SECRET!,
+    client_id: getMetaAppId(),
+    client_secret: getMetaAppSecret(),
     fb_exchange_token: shortLivedToken,
   });
 
