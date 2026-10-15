@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, Plus, MoreVertical, Image as ImageIcon } from "lucide-react";
+import { Package, Plus, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
+import { ProductCardActions } from "@/components/products/product-card-actions";
 
 export default async function ProductsPage() {
   const supabase = await createClient();
@@ -74,9 +75,7 @@ export default async function ProductsPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className="font-semibold text-slate-900 text-sm truncate">{product.name}</h3>
-                    <Button variant="ghost" size="icon-sm" className="shrink-0 -mr-1">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
+                    <ProductCardActions product={product} />
                   </div>
                   {product.price && (
                     <p className="text-sm font-bold text-violet-600">

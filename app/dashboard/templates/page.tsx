@@ -185,7 +185,7 @@ export default function TemplatesPage() {
                     {isCopied ? "Copied!" : "Copy Template"}
                   </Button>
                   <Button size="sm" asChild className="flex-1 gap-1.5 text-xs">
-                    <Link href="/dashboard/automations/new">
+                    <Link href={`/dashboard/automations/new?template=${template.id}`}>
                       Use in Automation <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </Button>

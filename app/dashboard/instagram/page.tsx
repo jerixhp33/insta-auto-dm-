@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Camera, Plus, RefreshCw, Unlink, CheckCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { AccountCardActions } from "@/components/instagram/account-card-actions";
 
 interface Props {
   searchParams?: Promise<{
@@ -115,16 +116,12 @@ export default async function InstagramPage(props: Props) {
                       {config.label}
                     </Badge>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1 gap-1.5">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Sync
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-1.5">
-                      <Unlink className="h-3.5 w-3.5" />
-                      Disconnect
-                    </Button>
-                  </div>
+                  <AccountCardActions
+                    accountId={account.id}
+                    username={account.username}
+                    status={account.status}
+                    workspaceId={workspaceId}
+                  />
                 </CardContent>
               </Card>
             );

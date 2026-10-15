@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Zap, Plus, MoreVertical, TrendingUp, MessageCircle, Mail, Layers, Video, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { SyncNowButton } from "@/components/automation/sync-now-button";
+import { AutomationCardActions, AutomationToggleButton } from "@/components/automation/automation-card-actions";
 
 interface MemberRow { workspace_id: string; }
 interface AutomationRow {
@@ -97,7 +98,7 @@ export default async function AutomationsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant={config.variant}>{config.label}</Badge>
-                          <Button variant="ghost" size="icon-sm"><MoreVertical className="h-4 w-4" /></Button>
+                          <AutomationCardActions automation={automation as any} />
                         </div>
                       </div>
                       {keywords.length > 0 && (
@@ -117,10 +118,14 @@ export default async function AutomationsPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
-                    <Button variant="outline" size="sm" asChild className="flex-1"><Link href={`/dashboard/automations/${automation.id}`}>Edit</Link></Button>
-                    <Button variant={automation.status === "active" ? "secondary" : "default"} size="sm" className="flex-1">
-                      {automation.status === "active" ? "Pause" : "Activate"}
+                    <Button variant="outline" size="sm" asChild className="flex-1">
+                      <Link href={`/dashboard/automations/${automation.id}`}>Edit</Link>
                     </Button>
+                    <AutomationToggleButton
+                      automationId={automation.id}
+                      currentStatus={automation.status}
+                      automationName={automation.name}
+                    />
                   </div>
                 </CardContent>
               </Card>

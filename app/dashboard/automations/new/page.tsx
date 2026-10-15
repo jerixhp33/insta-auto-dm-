@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { automationSchema, type AutomationInput } from "@/schemas";
@@ -66,12 +66,65 @@ export default function NewAutomationPage() {
   const [mediaFilter, setMediaFilter] = useState<"all" | "reels" | "posts">("all");
   const [selectedMediaId, setSelectedMediaId] = useState<string>("");
 
-  const { register, formState: { errors }, watch } = useForm<AutomationInput>({
+  const searchParams = useSearchParams();
+  const templateParam = searchParams.get("template");
+
+  const { register, formState: { errors }, watch, setValue } = useForm<AutomationInput>({
     resolver: zodResolver(automationSchema) as any,
     defaultValues: { keywords: [], dm_enabled: true, public_reply_enabled: true },
   });
 
   const automationName = watch("name");
+
+  // Handle template prefill if navigated from Templates page
+  useEffect(() => {
+    if (!templateParam) return;
+    const presets: Record<string, { title: string; publicReply: string; privateMessage: string; keywords: string[] }> = {
+      product_link: {
+        title: "Product Purchase & Price Drop",
+        publicReply: "Sent you the direct link and price in your DM! Check your inbox ❤️",
+        privateMessage: "Hey {{first_name}} 👋\n\nThanks for asking! Here are the details for {{product_name}}:\n\n💰 Price: {{product_price}}\n🔗 Order link: {{product_url}}\n\nLet me know if you need any help picking a size!",
+        keywords: ["price", "cost", "buy", "order", "link"],
+      },
+      discount_code: {
+        title: "Exclusive Discount & Promo Code",
+        publicReply: "Check your DMs for your exclusive discount code! 🎁✨",
+        privateMessage: "Hi {{first_name}}! 🎉\n\nHere is your private 15% discount code: INSTA15\n\nUse it on any product here: {{product_url}}\n\nValid for the next 24 hours only. Enjoy shopping!",
+        keywords: ["discount", "coupon", "deal", "promo", "save"],
+      },
+      free_guide: {
+        title: "Free Guide Download",
+        publicReply: "Sent the free guide to your DM! Enjoy reading 📚",
+        privateMessage: "Hey {{first_name}}! 🚀\n\nHere is your instant access to the guide you requested:\n\n📥 Download link: {{product_url}}\n\nFeel free to reply right here if you have any questions after going through it!",
+        keywords: ["guide", "free", "pdf", "checklist", "ebook"],
+      },
+      reel_giveaway: {
+        title: "Reel Giveaway & Contest Entry",
+        publicReply: "You're in! Check your DMs for entry confirmation and bonus entries 🎟️",
+        privateMessage: "Woohoo {{first_name}}! 🥳\n\nYour entry is officially confirmed for our giveaway!\n\nWant 3 bonus entries? Share this Reel to your Instagram story and tag us!\n\nWinners announced this Sunday at 6 PM. Good luck! 🍀",
+        keywords: ["win", "enter", "giveaway", "contest", "yes"],
+      },
+      vip_support: {
+        title: "VIP Customer Support",
+        publicReply: "Hey! We've messaged you in DMs so we can help resolve this right away 🙏",
+        privateMessage: "Hi {{first_name}}, thanks for reaching out!\n\nWe want to make sure you're completely taken care of. Could you share your order number or question here? Our team is on standby to help you!",
+        keywords: ["help", "track", "shipping", "return", "support"],
+      },
+    };
+
+    const t = presets[templateParam];
+    if (t) {
+      setValue("name", t.title);
+      setKeywords(t.keywords);
+      setPublicReply(t.publicReply);
+      setPrivateMessage(t.privateMessage);
+      toast({
+        variant: "success",
+        title: "Template loaded!",
+        description: `Applied "${t.title}" preset.`,
+      });
+    }
+  }, [templateParam, setValue]);
 
   // Fetch accounts & products
   useEffect(() => {
