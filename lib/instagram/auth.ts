@@ -19,8 +19,13 @@ const IG_REQUIRED_SCOPES = [
 ].join(",");
 
 export const getMetaAppId = () => process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "";
-export const getMetaAppSecret = () => process.env.META_APP_SECRET || "";
-export const getMetaRedirectUri = () => process.env.META_REDIRECT_URI || "http://localhost:3000/api/instagram/callback";
+export const getMetaRedirectUri = () => {
+  if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
+  if (process.env.NEXT_PUBLIC_APP_URL) return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/instagram/callback`;
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/instagram/callback`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/instagram/callback`;
+  return "http://localhost:3000/api/instagram/callback";
+};
 
 export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "facebook"): string {
   const appId = getMetaAppId();
