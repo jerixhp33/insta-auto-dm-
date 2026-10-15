@@ -172,6 +172,7 @@ export default function EditAutomationPage({ params }: { params: Promise<{ id: s
           status,
           instagram_account_id: selectedAccountId,
           instagram_media_id: targetType === "specific" && selectedMediaId ? selectedMediaId : null,
+          reply_to_all: targetType === "all",
           public_reply: publicReplyEnabled ? publicReply : null,
           private_message: dmEnabled ? privateMessage : null,
           product_id: selectedProductId || null,

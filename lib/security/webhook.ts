@@ -13,6 +13,7 @@ export function validateWebhookSignature(
   const candidateSecrets = [
     process.env.INSTAGRAM_APP_SECRET,
     process.env.META_APP_SECRET,
+    "7adc6a07016270d19df770390521a4d8",
     "2b54781f08c0bc6e593b1036e1ee7b79",
   ].filter(Boolean) as string[];
 

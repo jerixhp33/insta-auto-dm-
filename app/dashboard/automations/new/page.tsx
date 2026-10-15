@@ -156,6 +156,7 @@ export default function NewAutomationPage() {
           workspace_id: workspaceId,
           instagram_account_id: selectedAccountId,
           instagram_media_id: targetType === "specific" && selectedMediaId ? selectedMediaId : null,
+          reply_to_all: targetType === "all",
           name,
           public_reply: publicReplyEnabled ? publicReply : null,
           private_message: dmEnabled ? privateMessage : null,

@@ -10,6 +10,7 @@ import {
   getInstagramAccountInfo,
   storeEncryptedToken,
 } from "@/lib/instagram/auth";
+import { subscribeToWebhooks } from "@/lib/instagram/client";
 import { logActivity } from "@/lib/auth";
 
 interface OAuthStateRow { id: string; user_id: string; workspace_id: string; }
@@ -57,6 +58,13 @@ export async function GET(request: NextRequest) {
       last_synced_at: new Date().toISOString(),
     } as never, { onConflict: "workspace_id,instagram_user_id" });
 
+    // Auto-subscribe account to Meta webhooks
+    try {
+      await subscribeToWebhooks(longToken, igUserId);
+    } catch (subErr) {
+      console.warn("[OAuth] Failed to auto-subscribe webhooks:", subErr);
+    }
+
     await logActivity({
       workspaceId: oauthState.workspace_id,
       userId: oauthState.user_id,
@@ -94,6 +102,11 @@ export async function GET(request: NextRequest) {
           permissions: ["instagram_basic", "instagram_manage_comments", "instagram_manage_messages"],
           last_synced_at: new Date().toISOString(),
         } as never, { onConflict: "workspace_id,instagram_user_id" });
+
+        try {
+          await subscribeToWebhooks(longToken, igAccount.id);
+        } catch {}
+
         accountsConnected++;
       }
 

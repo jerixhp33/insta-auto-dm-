@@ -19,7 +19,7 @@ const IG_REQUIRED_SCOPES = [
 ].join(",");
 
 export const getMetaAppId = () => process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "1647540866708249";
-export const getMetaAppSecret = () => process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "";
+export const getMetaAppSecret = () => process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "7adc6a07016270d19df770390521a4d8";
 export const getMetaRedirectUri = (origin?: string) => {
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
   if (origin && !origin.includes("localhost")) {

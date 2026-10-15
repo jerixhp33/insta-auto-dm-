@@ -148,28 +148,81 @@ export async function sendInstagramPrivateReply(
   message: string,
   recipientId?: string
 ) {
-  // Official Instagram Graph API Private Reply to comment
-  try {
-    return await graphApiRequest(`/${igUserId}/messages`, accessToken, {
-      method: "POST",
-      body: JSON.stringify({
-        recipient: { comment_id: commentId },
-        message: { text: message },
-      }),
-    });
-  } catch (err) {
-    // If private reply by comment_id fails and recipientId is provided, fallback to direct recipient
-    if (recipientId) {
-      return await graphApiRequest(`/${igUserId}/messages`, accessToken, {
+  const endpoints = [
+    igUserId ? `/${igUserId}/messages` : null,
+    "/me/messages",
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const endpoint of endpoints) {
+    // Attempt 1: Official Instagram comment_id private reply
+    try {
+      return await graphApiRequest(endpoint, accessToken, {
         method: "POST",
         body: JSON.stringify({
-          recipient: { id: recipientId },
+          recipient: { comment_id: commentId },
           message: { text: message },
         }),
       });
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Instagram DM comment_id on ${endpoint}] failed:`, err instanceof Error ? err.message : err);
     }
-    throw err;
+
+    // Attempt 2: Fallback to direct recipient ID if provided
+    if (recipientId) {
+      try {
+        return await graphApiRequest(endpoint, accessToken, {
+          method: "POST",
+          body: JSON.stringify({
+            recipient: { id: recipientId },
+            message: { text: message },
+          }),
+        });
+      } catch (err) {
+        lastError = err;
+        console.warn(`[Instagram DM recipientId on ${endpoint}] failed:`, err instanceof Error ? err.message : err);
+      }
+    }
   }
+
+  throw lastError;
+}
+
+export async function subscribeToWebhooks(accessToken: string, igUserId: string): Promise<boolean> {
+  const fields = ["comments", "messages", "messaging_postbacks"];
+  // 1. Direct Instagram Graph API /{igUserId}/subscribed_apps
+  try {
+    const res = await graphApiRequest<{ success?: boolean }>(`/${igUserId}/subscribed_apps`, accessToken, {
+      method: "POST",
+      body: JSON.stringify({ subscribed_fields: fields }),
+    });
+    if (res?.success) return true;
+  } catch (err: any) {
+    console.warn(`[Instagram Webhook Subscribe] direct ${igUserId} failed:`, err?.message || err);
+  }
+
+  // 2. Direct Instagram Graph API /me/subscribed_apps
+  try {
+    const res = await graphApiRequest<{ success?: boolean }>(`/me/subscribed_apps`, accessToken, {
+      method: "POST",
+      body: JSON.stringify({ subscribed_fields: fields }),
+    });
+    if (res?.success) return true;
+  } catch (err: any) {
+    console.warn(`[Instagram Webhook Subscribe] /me failed:`, err?.message || err);
+  }
+
+  // 3. Facebook Graph API fallback
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${igUserId}/subscribed_apps?subscribed_fields=${fields.join(",")}&access_token=${accessToken}`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    if (data?.success) return true;
+  } catch {}
+
+  return false;
 }
 
 export interface InstagramMediaItem {

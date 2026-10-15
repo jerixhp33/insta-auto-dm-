@@ -45,16 +45,34 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ received: true }, { status: 200 });
 }
 
-interface WebhookPayload { object: string; entry: { id: string; changes: { value: { media_id?: string; media?: { id: string }; comment_id?: string; from?: { id: string; username?: string }; text?: string; id?: string; }; field: string; }[]; }[]; }
-interface AccountRow { id: string; workspace_id: string; encrypted_access_token: string; status: string; username: string; }
+interface WebhookPayload {
+  object: string;
+  entry: {
+    id: string;
+    changes: {
+      value: {
+        media_id?: string;
+        media?: { id: string };
+        comment_id?: string;
+        from?: { id: string; username?: string };
+        text?: string;
+        id?: string;
+        parent_id?: string;
+      };
+      field: string;
+    }[];
+  }[];
+}
+interface AccountRow { id: string; workspace_id: string; encrypted_access_token: string; status: string; username: string; instagram_user_id?: string; }
 interface MediaRow { id: string; }
 interface AutomationRow {
   id: string; name: string; public_reply: string | null; private_message: string | null; product_id: string | null;
   dm_enabled: boolean; public_reply_enabled: boolean; trigger_count: number; success_count: number; failure_count: number;
+  reply_to_all?: boolean; instagram_media_id?: string | null;
   automation_keywords: { keyword: string }[];
   products: { name: string; price: number | null; url: string | null; currency: string } | null;
 }
-interface AutomationScopedRow { instagram_media_id: string | null; }
+interface AutomationScopedRow { instagram_media_id: string | null; reply_to_all?: boolean; }
 interface EventRow { id: string; }
 
 async function processWebhookAsync(payload: WebhookPayload) {
@@ -71,24 +89,56 @@ async function processWebhookAsync(payload: WebhookPayload) {
       const commentText = value.text;
       const commenterId = value.from?.id;
       const commenterUsername = value.from?.username;
+      const parentId = value.parent_id;
       if (!commentId || !commentText) continue;
 
-      console.log(`[Webhook] Incoming comment for IG user ${igUserId}: "${commentText}" on comment ${commentId}, media ${mediaId}`);
+      // Ignore sub-replies to prevent recursive loops with the bot
+      if (parentId) {
+        console.log(`[Webhook] Skipping sub-reply to parent ${parentId}`);
+        continue;
+      }
 
-      const { data: rawAccount } = await (supabase
+      console.log(`[Webhook] Incoming comment for IG user ${igUserId}: "${commentText}" from @${commenterUsername || commenterId} on comment ${commentId}, media ${mediaId}`);
+
+      // 1. Resolve connected Instagram account
+      let { data: rawAccount } = await (supabase
         .from("instagram_accounts") as any)
-        .select("id, workspace_id, encrypted_access_token, status, username")
+        .select("id, workspace_id, encrypted_access_token, status, username, instagram_user_id")
         .eq("instagram_user_id", igUserId)
         .eq("status", "connected")
         .maybeSingle();
 
+      if (!rawAccount) {
+        // Fallback: Check if there's a connected account in the workspace
+        const { data: allAccounts } = await (supabase
+          .from("instagram_accounts") as any)
+          .select("id, workspace_id, encrypted_access_token, status, username, instagram_user_id")
+          .eq("status", "connected");
+
+        if (allAccounts && allAccounts.length === 1) {
+          rawAccount = allAccounts[0];
+          console.log(`[Webhook] Matched single connected account @${rawAccount.username} (${rawAccount.instagram_user_id}) for entry.id ${igUserId}`);
+        } else if (allAccounts && allAccounts.length > 1) {
+          for (const acc of allAccounts) {
+            try {
+              const accToken = decrypt(acc.encrypted_access_token);
+              const meRes = await fetch(`https://graph.instagram.com/v19.0/me?access_token=${accToken}`);
+              const meData = await meRes.json();
+              if (meData?.id === igUserId || acc.username === commenterUsername) {
+                rawAccount = acc;
+                break;
+              }
+            } catch {}
+          }
+        }
+      }
+
       const account = rawAccount as AccountRow | null;
       if (!account) { console.warn(`[Webhook] No connected account found for IG user ${igUserId}`); continue; }
 
-      // Skip comments made by the account itself to prevent loop
-      if (commenterId === igUserId || (account.username && commenterUsername === account.username)) {
-        console.log(`[Webhook] Skipping self-comment by @${account.username}`);
-        continue;
+      const isSelfComment = commenterId === igUserId || (account.username && commenterUsername === account.username);
+      if (isSelfComment) {
+        console.log(`[Webhook] Comment was made by the account owner @${account.username}`);
       }
 
       const workspaceId = account.workspace_id;
@@ -113,7 +163,7 @@ async function processWebhookAsync(payload: WebhookPayload) {
       }
 
       const { data: rawAutomations } = await (supabase.from("automations") as any)
-        .select("id, name, public_reply, private_message, product_id, dm_enabled, public_reply_enabled, trigger_count, success_count, failure_count, automation_keywords(keyword), products(name, price, url, currency)")
+        .select("id, name, public_reply, private_message, product_id, dm_enabled, public_reply_enabled, trigger_count, success_count, failure_count, reply_to_all, instagram_media_id, automation_keywords(keyword), products(name, price, url, currency)")
         .eq("workspace_id", workspaceId).eq("instagram_account_id", account.id).eq("status", "active");
       const automations = (rawAutomations || []) as unknown as AutomationRow[];
       if (!automations.length) {
@@ -122,13 +172,11 @@ async function processWebhookAsync(payload: WebhookPayload) {
       }
 
       for (const automation of automations) {
-        const { data: rawScoped } = await (supabase.from("automations") as any).select("instagram_media_id").eq("id", automation.id).maybeSingle();
-        const scoped = rawScoped as AutomationScopedRow | null;
-
-        // Scoping check: If automation targets a specific reel/post, verify it matches
-        if (scoped?.instagram_media_id) {
-          if (!dbMediaId || scoped.instagram_media_id !== dbMediaId) {
-            console.log(`[Webhook] Automation "${automation.name}" targets media ${scoped.instagram_media_id}, but comment was on ${dbMediaId}. Skipping.`);
+        // Scoping check: If automation targets a specific reel/post (and not reply_to_all)
+        const isScoped = !automation.reply_to_all && !!automation.instagram_media_id;
+        if (isScoped) {
+          if (!dbMediaId || (automation.instagram_media_id !== dbMediaId && automation.instagram_media_id !== mediaId)) {
+            console.log(`[Webhook] Automation "${automation.name}" targets media ${automation.instagram_media_id}, but comment was on ${dbMediaId || mediaId}. Skipping.`);
             continue;
           }
         }
@@ -185,28 +233,33 @@ async function processWebhookAsync(payload: WebhookPayload) {
           }
         }
 
-        // 3. Private DM (Private reply referencing comment_id)
+        // 3. Private DM
         if (automation.dm_enabled && automation.private_message) {
-          try {
-            console.log(`[Webhook] Sending private DM for comment ${commentId} to ${commenterUsername || commenterId}...`);
-            const vars = buildMessageVariables({
-              firstName: commenterUsername?.split("_")[0] || commenterUsername,
-              username: commenterUsername,
-              productName: product?.name,
-              productPrice: product?.price ? `${product.currency === "INR" ? "₹" : "$"}${product.price}` : undefined,
-              productUrl: product?.url || undefined,
-            });
-            const message = interpolateTemplate(automation.private_message, vars);
-            await withRetry(
-              () => sendInstagramPrivateReply(accessToken, igUserId, commentId, message, commenterId),
-              {},
-              (err) => err instanceof InstagramApiError && err.isPermanent
-            );
-            dmOk = true;
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "DM failed";
-            errorMsg = errorMsg ? `${errorMsg}; ${msg}` : msg;
-            console.error(`[Webhook] Private DM error:`, msg);
+          if (isSelfComment) {
+            console.log("[Webhook] Cannot send private DM to self (Meta API restriction). Skipping DM.");
+            dmOk = false;
+          } else {
+            try {
+              console.log(`[Webhook] Sending private DM for comment ${commentId} to ${commenterUsername || commenterId}...`);
+              const vars = buildMessageVariables({
+                firstName: commenterUsername?.split("_")[0] || commenterUsername,
+                username: commenterUsername,
+                productName: product?.name,
+                productPrice: product?.price ? `${product.currency === "INR" ? "₹" : "$"}${product.price}` : undefined,
+                productUrl: product?.url || undefined,
+              });
+              const message = interpolateTemplate(automation.private_message, vars);
+              await withRetry(
+                () => sendInstagramPrivateReply(accessToken, igUserId, commentId, message, commenterId),
+                {},
+                (err) => err instanceof InstagramApiError && err.isPermanent
+              );
+              dmOk = true;
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "DM failed";
+              errorMsg = errorMsg ? `${errorMsg}; ${msg}` : msg;
+              console.error(`[Webhook] Private DM error:`, msg);
+            }
           }
         }
 
@@ -214,7 +267,7 @@ async function processWebhookAsync(payload: WebhookPayload) {
         await (supabase.from("automation_events") as any).update({
           status: finalStatus,
           public_reply_status: automation.public_reply_enabled ? (publicReplyOk ? "success" : "failed") : null,
-          dm_status: automation.dm_enabled ? (dmOk ? "success" : "failed") : null,
+          dm_status: automation.dm_enabled ? (isSelfComment ? "skipped_self" : (dmOk ? "success" : "failed")) : null,
           error_message: errorMsg, processed_at: new Date().toISOString(),
         } as never).eq("id", event.id);
 
@@ -228,3 +281,4 @@ async function processWebhookAsync(payload: WebhookPayload) {
     }
   }
 }
+
