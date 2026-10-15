@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Zap, Plus, MoreVertical, TrendingUp, MessageCircle, Mail, Layers, Video, Image as ImageIcon } from "lucide-react";
+import { Zap, Plus, MoreVertical, TrendingUp, MessageCircle, Mail, Layers, Video, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { SyncNowButton } from "@/components/automation/sync-now-button";
 
 interface MemberRow { workspace_id: string; }
 interface AutomationRow {
@@ -36,12 +37,23 @@ export default async function AutomationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Automations</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{automations.length} automation{automations.length !== 1 ? "s" : ""}</p>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-slate-900">Automations</h1>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Independent Engine Active
+            </span>
+          </div>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {automations.length} automation{automations.length !== 1 ? "s" : ""} • Scanning comments automatically every 15s
+          </p>
         </div>
-        <Button asChild><Link href="/dashboard/automations/new"><Plus className="h-4 w-4" />New Automation</Link></Button>
+        <div className="flex items-center gap-2.5">
+          <SyncNowButton />
+          <Button asChild><Link href="/dashboard/automations/new"><Plus className="h-4 w-4" />New Automation</Link></Button>
+        </div>
       </div>
       {automations.length ? (
         <div className="grid gap-4">

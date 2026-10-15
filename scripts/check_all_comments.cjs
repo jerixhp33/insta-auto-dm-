@@ -1,0 +1,61 @@
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
+
+const envPath = path.resolve(__dirname, '../.env.local');
+const envContent = fs.readFileSync(envPath, 'utf-8');
+const env = {};
+for (const line of envContent.split('\n')) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#')) continue;
+  const idx = trimmed.indexOf('=');
+  if (idx !== -1) {
+    const k = trimmed.slice(0, idx).trim();
+    let v = trimmed.slice(idx + 1).trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1);
+    }
+    env[k] = v;
+  }
+}
+
+function decrypt(ciphertext) {
+  const key = Buffer.from(env.ENCRYPTION_KEY, 'hex');
+  const data = Buffer.from(ciphertext, 'base64');
+  const iv = data.subarray(0, 16);
+  const tag = data.subarray(16, 32);
+  const encrypted = data.subarray(32);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  return decipher.update(encrypted, undefined, 'utf8') + decipher.final('utf8');
+}
+
+const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function main() {
+  const { data: accounts } = await supabase.from('instagram_accounts').select('*');
+  const account = accounts[0];
+  const token = decrypt(account.encrypted_access_token);
+
+  const { data: mediaList } = await supabase.from('instagram_media').select('*');
+  console.log(`Checking comments across ${mediaList.length} media items for @${account.username}...`);
+
+  let totalComments = 0;
+  for (const m of mediaList) {
+    try {
+      const res = await fetch(`https://graph.instagram.com/v19.0/${m.instagram_media_id}/comments?fields=id,text,username,timestamp,from,replies{id,text,username}&access_token=${token}`);
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        console.log(`\nMedia ID: ${m.instagram_media_id} (${m.permalink}):`);
+        console.log(JSON.stringify(data.data, null, 2));
+        totalComments += data.data.length;
+      }
+    } catch (e) {
+      console.error(`Error on media ${m.instagram_media_id}:`, e.message);
+    }
+  }
+  console.log(`\nFinished check. Total comments found across all media: ${totalComments}`);
+}
+
+main().catch(console.error);

@@ -8,6 +8,7 @@ import {
   ExternalLink, Filter, RefreshCw
 } from "lucide-react";
 import Link from "next/link";
+import { SyncNowButton } from "@/components/automation/sync-now-button";
 
 interface MemberRow { workspace_id: string; }
 interface CommentEventRow {
@@ -68,6 +69,7 @@ export default async function CommentsPage() {
           <p className="text-sm text-slate-500 mt-0.5">Real-time log of incoming Instagram comments, auto-likes, and replies</p>
         </div>
         <div className="flex items-center gap-2">
+          <SyncNowButton />
           <Button variant="outline" size="sm" asChild>
             <Link href="/dashboard/automations/new">
               <Zap className="h-4 w-4 mr-1.5" /> New Automation
