@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import {
   Zap, X, Plus, ChevronRight, ChevronLeft,
   MessageCircle, Mail, Package, CheckCircle, Smartphone,
+  Layers, Video, Image as ImageIcon, RefreshCw, ExternalLink, Heart
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,19 @@ const STEPS = [
   { id: 4, title: "Product", icon: Package },
   { id: 5, title: "Review", icon: CheckCircle },
 ];
+
+interface MediaItem {
+  id: string; // Supabase UUID
+  instagram_media_id: string;
+  media_type: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM";
+  thumbnail_url?: string;
+  media_url?: string;
+  caption?: string;
+  permalink?: string;
+  timestamp?: string;
+  like_count?: number;
+  comments_count?: number;
+}
 
 export default function NewAutomationPage() {
   const router = useRouter();
@@ -45,13 +59,21 @@ export default function NewAutomationPage() {
   const [privateMessage, setPrivateMessage] = useState("Hi {{first_name}} 👋\nHere's the product you asked about.\n\n{{product_name}}\n{{product_price}}\n\nTap below to view the product.");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { register, handleSubmit, formState: { errors }, watch } = useForm<AutomationInput>({
+  // Target content state
+  const [targetType, setTargetType] = useState<"all" | "specific">("all");
+  const [mediaList, setMediaList] = useState<MediaItem[]>([]);
+  const [isLoadingMedia, setIsLoadingMedia] = useState(false);
+  const [mediaFilter, setMediaFilter] = useState<"all" | "reels" | "posts">("all");
+  const [selectedMediaId, setSelectedMediaId] = useState<string>("");
+
+  const { register, formState: { errors }, watch } = useForm<AutomationInput>({
     resolver: zodResolver(automationSchema) as any,
     defaultValues: { keywords: [], dm_enabled: true, public_reply_enabled: true },
   });
 
   const automationName = watch("name");
 
+  // Fetch accounts & products
   useEffect(() => {
     const loadData = async () => {
       const supabase = createClient();
@@ -78,6 +100,30 @@ export default function NewAutomationPage() {
     loadData();
   }, []);
 
+  // Fetch media when an account is selected or when user chooses "specific"
+  const fetchMedia = useCallback(async (accountId: string) => {
+    if (!accountId) return;
+    setIsLoadingMedia(true);
+    try {
+      const res = await fetch(`/api/instagram/media?account_id=${accountId}`);
+      const data = await res.json();
+      if (data.media) {
+        setMediaList(data.media);
+      }
+    } catch (err) {
+      console.error("Error fetching media:", err);
+      toast({ variant: "destructive", title: "Could not load posts/reels", description: "Please try again later." });
+    } finally {
+      setIsLoadingMedia(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedAccountId && targetType === "specific") {
+      fetchMedia(selectedAccountId);
+    }
+  }, [selectedAccountId, targetType, fetchMedia]);
+
   const addKeyword = () => {
     const k = keyword.trim().toLowerCase();
     if (k && !keywords.includes(k)) {
@@ -97,6 +143,10 @@ export default function NewAutomationPage() {
       toast({ variant: "destructive", title: "Add keywords", description: "Add at least one keyword trigger." });
       return;
     }
+    if (targetType === "specific" && !selectedMediaId) {
+      toast({ variant: "destructive", title: "Choose a Reel or Post", description: "Please select which Reel or Post to automate, or choose All Content." });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -105,6 +155,7 @@ export default function NewAutomationPage() {
         .insert({
           workspace_id: workspaceId,
           instagram_account_id: selectedAccountId,
+          instagram_media_id: targetType === "specific" && selectedMediaId ? selectedMediaId : null,
           name,
           public_reply: publicReplyEnabled ? publicReply : null,
           private_message: dmEnabled ? privateMessage : null,
@@ -129,7 +180,7 @@ export default function NewAutomationPage() {
         );
       }
 
-      toast({ variant: "success", title: "Automation created!", description: "Your automation is now active." });
+      toast({ variant: "success", title: "Automation created!", description: "Your automation is now live." });
       router.push("/dashboard/automations");
     } catch {
       toast({ variant: "destructive", title: "Failed to create automation", description: "Please try again." });
@@ -139,6 +190,17 @@ export default function NewAutomationPage() {
   };
 
   const selectedProduct = products.find(p => p.id === selectedProductId);
+  const selectedMedia = mediaList.find(m => m.id === selectedMediaId);
+
+  // Filter media items
+  const filteredMedia = mediaList.filter(m => {
+    if (mediaFilter === "reels") return m.media_type === "VIDEO";
+    if (mediaFilter === "posts") return m.media_type === "IMAGE" || m.media_type === "CAROUSEL_ALBUM";
+    return true;
+  });
+
+  const reelsCount = mediaList.filter(m => m.media_type === "VIDEO").length;
+  const postsCount = mediaList.filter(m => m.media_type === "IMAGE" || m.media_type === "CAROUSEL_ALBUM").length;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -182,14 +244,15 @@ export default function NewAutomationPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Select Instagram Content</CardTitle>
-                <p className="text-sm text-slate-500">Choose a Reel or Post to automate</p>
+                <p className="text-sm text-slate-500">Choose all content or target a specific Reel or Post</p>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5">
                 <div className="space-y-1.5">
                   <Label htmlFor="name">Automation Name</Label>
                   <Input id="name" placeholder="e.g. Price Inquiry Reply" {...register("name")} />
                   {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
                 </div>
+
                 <div className="space-y-1.5">
                   <Label>Instagram Account</Label>
                   {accounts.length > 0 ? (
@@ -197,7 +260,11 @@ export default function NewAutomationPage() {
                       {accounts.map(acc => (
                         <button
                           key={acc.id}
-                          onClick={() => setSelectedAccountId(acc.id)}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAccountId(acc.id);
+                            if (targetType === "specific") fetchMedia(acc.id);
+                          }}
                           className={cn(
                             "flex items-center gap-3 rounded-xl border p-3 text-left transition-colors",
                             selectedAccountId === acc.id ? "border-violet-300 bg-violet-50" : "border-slate-200 hover:border-violet-200"
@@ -220,15 +287,214 @@ export default function NewAutomationPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 mt-2">
-                  <Button variant="outline" className="flex-1 rounded-xl border-2 py-6 text-sm font-medium">
-                    Reels
-                  </Button>
-                  <Button variant="outline" className="flex-1 rounded-xl border-2 py-6 text-sm font-medium text-slate-400">
-                    Posts
-                  </Button>
+
+                {/* Content Target Type Selection */}
+                <div className="space-y-2">
+                  <Label>Automation Target</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetType("all");
+                        setSelectedMediaId("");
+                      }}
+                      className={cn(
+                        "flex flex-col items-start p-4 rounded-xl border text-left transition-all",
+                        targetType === "all"
+                          ? "border-violet-600 bg-violet-50/60 ring-2 ring-violet-500/20"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className={cn("p-1.5 rounded-lg", targetType === "all" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-600")}>
+                          <Layers className="h-4 w-4" />
+                        </div>
+                        <span className="font-semibold text-sm text-slate-900">All Content</span>
+                      </div>
+                      <p className="text-xs text-slate-500">Auto-reply across all existing and upcoming Reels & Posts</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetType("specific");
+                        if (selectedAccountId && mediaList.length === 0) {
+                          fetchMedia(selectedAccountId);
+                        }
+                      }}
+                      className={cn(
+                        "flex flex-col items-start p-4 rounded-xl border text-left transition-all",
+                        targetType === "specific"
+                          ? "border-violet-600 bg-violet-50/60 ring-2 ring-violet-500/20"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className={cn("p-1.5 rounded-lg", targetType === "specific" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-600")}>
+                          <Video className="h-4 w-4" />
+                        </div>
+                        <span className="font-semibold text-sm text-slate-900">Specific Reel / Post</span>
+                      </div>
+                      <p className="text-xs text-slate-500">Choose a single Reel or Post to target specifically</p>
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-400 text-center">Or apply automation to all content</p>
+
+                {/* Specific Reel / Post Selector Grid */}
+                {targetType === "specific" && (
+                  <div className="space-y-3 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setMediaFilter("all")}
+                          className={cn(
+                            "px-3 py-1 rounded-lg text-xs font-medium transition-colors",
+                            mediaFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          )}
+                        >
+                          All ({mediaList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMediaFilter("reels")}
+                          className={cn(
+                            "px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1",
+                            mediaFilter === "reels" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          )}
+                        >
+                          <Video className="h-3 w-3" /> Reels ({reelsCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMediaFilter("posts")}
+                          className={cn(
+                            "px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1",
+                            mediaFilter === "posts" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          )}
+                        >
+                          <ImageIcon className="h-3 w-3" /> Posts ({postsCount})
+                        </button>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => fetchMedia(selectedAccountId)}
+                        disabled={isLoadingMedia}
+                        className="text-xs h-7 text-slate-500 hover:text-slate-900"
+                      >
+                        <RefreshCw className={cn("h-3 w-3 mr-1", isLoadingMedia && "animate-spin")} />
+                        Refresh
+                      </Button>
+                    </div>
+
+                    {isLoadingMedia ? (
+                      <div className="grid grid-cols-3 gap-3 py-6">
+                        {[1, 2, 3, 4, 5, 6].map(i => (
+                          <div key={i} className="aspect-square rounded-xl bg-slate-100 animate-pulse" />
+                        ))}
+                      </div>
+                    ) : filteredMedia.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-80 overflow-y-auto p-1">
+                        {filteredMedia.map(item => {
+                          const isSelected = selectedMediaId === item.id;
+                          const thumb = item.thumbnail_url || item.media_url;
+                          const isVideo = item.media_type === "VIDEO";
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setSelectedMediaId(item.id)}
+                              className={cn(
+                                "group relative flex flex-col rounded-xl overflow-hidden border text-left transition-all",
+                                isSelected
+                                  ? "border-violet-600 ring-2 ring-violet-500 shadow-md"
+                                  : "border-slate-200 hover:border-slate-300 bg-slate-50"
+                              )}
+                            >
+                              <div className="relative aspect-square w-full bg-slate-200 overflow-hidden">
+                                {thumb ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={thumb}
+                                    alt={item.caption || "Instagram media"}
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-slate-400">
+                                    {isVideo ? <Video className="h-8 w-8" /> : <ImageIcon className="h-8 w-8" />}
+                                  </div>
+                                )}
+
+                                {/* Media type badge */}
+                                <div className="absolute top-2 left-2 rounded-md bg-black/60 backdrop-blur-sm px-1.5 py-0.5 text-[10px] font-medium text-white flex items-center gap-1">
+                                  {isVideo ? <Video className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
+                                  {isVideo ? "Reel" : "Post"}
+                                </div>
+
+                                {/* Selection indicator */}
+                                {isSelected && (
+                                  <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-violet-600 text-white flex items-center justify-center shadow">
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                  </div>
+                                )}
+
+                                {/* Open permalink */}
+                                {item.permalink && (
+                                  <a
+                                    href={item.permalink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={e => e.stopPropagation()}
+                                    className="absolute bottom-2 right-2 rounded-md bg-black/60 backdrop-blur-sm p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                                    title="View on Instagram"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </div>
+
+                              {/* Caption snippet */}
+                              <div className="p-2 bg-white">
+                                <p className="text-[11px] text-slate-700 line-clamp-2 leading-tight">
+                                  {item.caption || "(No caption)"}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
+                                  {item.like_count !== undefined && (
+                                    <span className="flex items-center gap-0.5">
+                                      <Heart className="h-2.5 w-2.5" /> {item.like_count}
+                                    </span>
+                                  )}
+                                  {item.comments_count !== undefined && (
+                                    <span className="flex items-center gap-0.5">
+                                      <MessageCircle className="h-2.5 w-2.5" /> {item.comments_count}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center">
+                        <p className="text-xs text-slate-500 mb-2">No {mediaFilter !== "all" ? mediaFilter : "posts or reels"} found for this account</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => fetchMedia(selectedAccountId)}
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Try Syncing Again
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -248,7 +514,7 @@ export default function NewAutomationPage() {
                     placeholder="e.g. price, cost, link"
                     onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addKeyword())}
                   />
-                  <Button onClick={addKeyword} disabled={!keyword.trim()}>
+                  <Button type="button" onClick={addKeyword} disabled={!keyword.trim()}>
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
@@ -257,7 +523,7 @@ export default function NewAutomationPage() {
                     {keywords.map(kw => (
                       <span key={kw} className="inline-flex items-center gap-1.5 rounded-xl bg-violet-50 border border-violet-200 px-3 py-1.5 text-sm font-medium text-violet-700">
                         {kw}
-                        <button onClick={() => removeKeyword(kw)} className="text-violet-400 hover:text-violet-600">
+                        <button type="button" onClick={() => removeKeyword(kw)} className="text-violet-400 hover:text-violet-600">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </span>
@@ -271,6 +537,7 @@ export default function NewAutomationPage() {
                   <div className="flex flex-wrap gap-1.5">
                     {["price", "cost", "link", "buy", "interested", "available"].map(suggestion => (
                       <button
+                        type="button"
                         key={suggestion}
                         onClick={() => !keywords.includes(suggestion) && setKeywords([...keywords, suggestion])}
                         disabled={keywords.includes(suggestion)}
@@ -291,7 +558,10 @@ export default function NewAutomationPage() {
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle>Public Comment Reply</CardTitle>
+                    <div>
+                      <CardTitle>Public Comment Reply</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">Replies directly beneath their comment + auto-likes the comment</p>
+                    </div>
                     <Switch checked={publicReplyEnabled} onCheckedChange={setPublicReplyEnabled} />
                   </div>
                 </CardHeader>
@@ -311,7 +581,10 @@ export default function NewAutomationPage() {
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle>Private Message (DM)</CardTitle>
+                    <div>
+                      <CardTitle>Private Message (DM)</CardTitle>
+                      <p className="text-xs text-slate-500 mt-0.5">Sends an instant Direct Message to the commenter</p>
+                    </div>
                     <Switch checked={dmEnabled} onCheckedChange={setDmEnabled} />
                   </div>
                 </CardHeader>
@@ -326,6 +599,7 @@ export default function NewAutomationPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {["{{first_name}}", "{{product_name}}", "{{product_price}}", "{{product_url}}"].map(v => (
                         <button
+                          type="button"
                           key={v}
                           onClick={() => setPrivateMessage(prev => prev + " " + v)}
                           className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-mono text-violet-600 hover:bg-violet-50 transition-colors"
@@ -352,6 +626,7 @@ export default function NewAutomationPage() {
                 {products.length > 0 ? (
                   <>
                     <button
+                      type="button"
                       onClick={() => setSelectedProductId("")}
                       className={cn(
                         "w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-colors",
@@ -362,6 +637,7 @@ export default function NewAutomationPage() {
                     </button>
                     {products.map(product => (
                       <button
+                        type="button"
                         key={product.id}
                         onClick={() => setSelectedProductId(product.id)}
                         className={cn(
@@ -406,8 +682,24 @@ export default function NewAutomationPage() {
                     <span className="font-medium text-slate-900">{automationName || "Unnamed"}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Target Content</span>
+                    <span className="font-medium text-slate-900">
+                      {targetType === "all" ? (
+                        "All Posts & Reels"
+                      ) : selectedMedia ? (
+                        `${selectedMedia.media_type === "VIDEO" ? "Reel" : "Post"}: ${selectedMedia.caption?.slice(0, 24) || "Selected Media"}...`
+                      ) : (
+                        "Specific Media"
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500">Keywords</span>
                     <span className="font-medium text-slate-900">{keywords.length} keywords</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Auto-Like Comment</span>
+                    <Badge variant="success">Enabled</Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500">Public Reply</span>
@@ -439,12 +731,12 @@ export default function NewAutomationPage() {
           {/* Navigation */}
           <div className="flex gap-3">
             {step > 1 && (
-              <Button variant="outline" onClick={() => setStep(s => s - 1)} className="flex-1 gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(s => s - 1)} className="flex-1 gap-2">
                 <ChevronLeft className="h-4 w-4" /> Back
               </Button>
             )}
             {step < 5 && (
-              <Button onClick={() => setStep(s => s + 1)} className="flex-1 gap-2">
+              <Button type="button" onClick={() => setStep(s => s + 1)} className="flex-1 gap-2">
                 Next <ChevronRight className="h-4 w-4" />
               </Button>
             )}

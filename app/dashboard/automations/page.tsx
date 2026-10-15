@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Zap, Plus, MoreVertical, TrendingUp, MessageCircle, Mail } from "lucide-react";
+import { Zap, Plus, MoreVertical, TrendingUp, MessageCircle, Mail, Layers, Video, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 
 interface MemberRow { workspace_id: string; }
@@ -14,6 +14,7 @@ interface AutomationRow {
   instagram_accounts: { username: string } | null;
   automation_keywords: { keyword: string }[];
   products: { name: string; price: number | null } | null;
+  instagram_media: { id: string; media_type: string; caption: string | null; thumbnail_url: string | null; permalink: string | null } | null;
 }
 
 const statusConfig: Record<string, { variant: "success" | "secondary" | "outline"; label: string }> = {
@@ -29,7 +30,7 @@ export default async function AutomationsPage() {
   const { data: rawMember } = await supabase.from("workspace_members").select("workspace_id").eq("user_id", user.id).limit(1).single();
   const workspaceId = (rawMember as MemberRow | null)?.workspace_id;
   const { data: rawAutomations } = await supabase.from("automations")
-    .select("id, name, status, public_reply, private_message, trigger_count, success_count, failure_count, dm_enabled, created_at, instagram_accounts(username), automation_keywords(keyword), products(name, price)")
+    .select("id, name, status, public_reply, private_message, trigger_count, success_count, failure_count, dm_enabled, created_at, instagram_accounts(username), automation_keywords(keyword), products(name, price), instagram_media(id, media_type, caption, thumbnail_url, permalink)")
     .eq("workspace_id", workspaceId || "").order("created_at", { ascending: false });
   const automations = (rawAutomations || []) as unknown as AutomationRow[];
 
@@ -58,7 +59,29 @@ export default async function AutomationsPage() {
                       <div className="flex items-start justify-between gap-2 flex-wrap mb-2">
                         <div>
                           <h3 className="font-semibold text-slate-900">{automation.name}</h3>
-                          {account && <p className="text-xs text-slate-500 mt-0.5">@{account.username}</p>}
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {account && <span className="text-xs text-slate-500">@{account.username}</span>}
+                            {automation.instagram_media ? (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-pink-50 border border-pink-200/60 px-2 py-0.5 text-[11px] font-medium text-pink-700">
+                                {automation.instagram_media.media_type === "VIDEO" ? (
+                                  <Video className="h-3 w-3 text-pink-600" />
+                                ) : (
+                                  <ImageIcon className="h-3 w-3 text-pink-600" />
+                                )}
+                                {automation.instagram_media.media_type === "VIDEO" ? "Reel" : "Post"}
+                                {automation.instagram_media.caption && (
+                                  <span className="max-w-[140px] truncate text-slate-600">
+                                    : {automation.instagram_media.caption}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                <Layers className="h-3 w-3 text-slate-500" />
+                                All Posts & Reels
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant={config.variant}>{config.label}</Badge>

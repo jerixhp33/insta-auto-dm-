@@ -6,7 +6,13 @@ import { checkAndMarkProcessed } from "@/lib/automation/idempotency";
 import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables } from "@/lib/automation/matcher";
 import { decrypt } from "@/lib/encryption";
 import { withRetry } from "@/lib/automation/retry";
-import { InstagramApiError } from "@/lib/instagram/client";
+import {
+  InstagramApiError,
+  likeInstagramComment,
+  likeInstagramMedia,
+  sendInstagramPublicReply,
+  sendInstagramPrivateReply,
+} from "@/lib/instagram/client";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -31,11 +37,11 @@ export async function POST(request: NextRequest) {
   try { payload = JSON.parse(rawBody); }
   catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  processWebhookAsync(payload).catch(err => console.error("[Webhook] Error:", err?.message));
+  processWebhookAsync(payload).catch(err => console.error("[Webhook] Processing Error:", err?.message || err));
   return NextResponse.json({ received: true }, { status: 200 });
 }
 
-interface WebhookPayload { object: string; entry: { id: string; changes: { value: { media_id?: string; comment_id?: string; from?: { id: string; username?: string }; text?: string; id?: string; }; field: string; }[]; }[]; }
+interface WebhookPayload { object: string; entry: { id: string; changes: { value: { media_id?: string; media?: { id: string }; comment_id?: string; from?: { id: string; username?: string }; text?: string; id?: string; }; field: string; }[]; }[]; }
 interface AccountRow { id: string; workspace_id: string; encrypted_access_token: string; status: string; username: string; }
 interface MediaRow { id: string; }
 interface AutomationRow {
@@ -56,41 +62,72 @@ async function processWebhookAsync(payload: WebhookPayload) {
     for (const change of entry.changes || []) {
       if (change.field !== "comments") continue;
       const { value } = change;
-      const commentId = value.comment_id || value.id;
-      const mediaId = value.media_id;
+      const commentId = value.id || value.comment_id;
+      const mediaId = value.media?.id || value.media_id;
       const commentText = value.text;
       const commenterId = value.from?.id;
       const commenterUsername = value.from?.username;
-      if (!commentId || !mediaId || !commentText) continue;
+      if (!commentId || !commentText) continue;
 
-      const { data: rawAccount } = await supabase
-        .from("instagram_accounts").select("id, workspace_id, encrypted_access_token, status, username")
-        .eq("instagram_user_id", igUserId).eq("status", "connected").single();
+      console.log(`[Webhook] Incoming comment for IG user ${igUserId}: "${commentText}" on comment ${commentId}, media ${mediaId}`);
+
+      const { data: rawAccount } = await (supabase
+        .from("instagram_accounts") as any)
+        .select("id, workspace_id, encrypted_access_token, status, username")
+        .eq("instagram_user_id", igUserId)
+        .eq("status", "connected")
+        .maybeSingle();
+
       const account = rawAccount as AccountRow | null;
-      if (!account) { console.warn(`[Webhook] No account for IG user ${igUserId}`); continue; }
+      if (!account) { console.warn(`[Webhook] No connected account found for IG user ${igUserId}`); continue; }
 
       const workspaceId = account.workspace_id;
       const isNew = await checkAndMarkProcessed(`comment:${commentId}`, workspaceId);
       if (!isNew) { console.log(`[Webhook] Duplicate skipped: comment:${commentId}`); continue; }
 
-      const { data: rawMedia } = await (supabase.from("instagram_media") as any).select("id")
-        .eq("workspace_id", workspaceId).eq("instagram_media_id", mediaId).single();
-      const dbMediaId = (rawMedia as MediaRow | null)?.id || null;
+      let dbMediaId: string | null = null;
+      if (mediaId) {
+        const { data: rawMedia } = await (supabase.from("instagram_media") as any).select("id")
+          .eq("workspace_id", workspaceId).eq("instagram_media_id", mediaId).maybeSingle();
+        dbMediaId = (rawMedia as MediaRow | null)?.id || null;
+
+        if (!dbMediaId) {
+          const { data: createdMedia } = await (supabase.from("instagram_media") as any).insert({
+            workspace_id: workspaceId,
+            instagram_account_id: account.id,
+            instagram_media_id: mediaId,
+            media_type: "UNKNOWN",
+          }).select("id").maybeSingle();
+          dbMediaId = (createdMedia as MediaRow | null)?.id || null;
+        }
+      }
 
       const { data: rawAutomations } = await (supabase.from("automations") as any)
         .select("id, name, public_reply, private_message, product_id, dm_enabled, public_reply_enabled, trigger_count, success_count, failure_count, automation_keywords(keyword), products(name, price, url, currency)")
         .eq("workspace_id", workspaceId).eq("instagram_account_id", account.id).eq("status", "active");
       const automations = (rawAutomations || []) as unknown as AutomationRow[];
-      if (!automations.length) continue;
+      if (!automations.length) {
+        console.log(`[Webhook] No active automations for workspace ${workspaceId} and account ${account.id}`);
+        continue;
+      }
 
       for (const automation of automations) {
-        const { data: rawScoped } = await (supabase.from("automations") as any).select("instagram_media_id").eq("id", automation.id).single();
+        const { data: rawScoped } = await (supabase.from("automations") as any).select("instagram_media_id").eq("id", automation.id).maybeSingle();
         const scoped = rawScoped as AutomationScopedRow | null;
-        if (scoped?.instagram_media_id && scoped.instagram_media_id !== dbMediaId) continue;
+
+        // Scoping check: If automation targets a specific reel/post, verify it matches
+        if (scoped?.instagram_media_id) {
+          if (!dbMediaId || scoped.instagram_media_id !== dbMediaId) {
+            console.log(`[Webhook] Automation "${automation.name}" targets media ${scoped.instagram_media_id}, but comment was on ${dbMediaId}. Skipping.`);
+            continue;
+          }
+        }
 
         const keywords = (automation.automation_keywords || []).map(k => k.keyword);
         const matchedKeyword = matchesAnyKeyword(commentText, keywords);
         if (!matchedKeyword) continue;
+
+        console.log(`[Webhook] Matched automation "${automation.name}" with keyword "${matchedKeyword}"!`);
 
         const product = automation.products;
         const { data: rawEvent } = await (supabase.from("automation_events") as any).insert({
@@ -112,31 +149,54 @@ async function processWebhookAsync(payload: WebhookPayload) {
         // Update trigger count
         await (supabase.from("automations") as any).update({ trigger_count: automation.trigger_count + 1 } as never).eq("id", automation.id).catch(() => {});
 
+        // 1. Auto-Like the user's comment (and media)
+        console.log(`[Webhook] Auto-liking comment ${commentId}...`);
+        await likeInstagramComment(accessToken, commentId, igUserId).catch(err => console.warn("[Webhook] Auto-like comment warning:", err));
+        if (mediaId) {
+          await likeInstagramMedia(accessToken, mediaId, igUserId).catch(err => console.warn("[Webhook] Auto-like media warning:", err));
+        }
+
         let publicReplyOk = false, dmOk = false;
         let errorMsg: string | null = null;
 
+        // 2. Public reply to the comment
         if (automation.public_reply_enabled && automation.public_reply) {
           try {
-            await withRetry(() => sendPublicReply(accessToken, commentId, automation.public_reply!), {},
-              (err) => err instanceof InstagramApiError && err.isPermanent);
+            console.log(`[Webhook] Sending public reply to comment ${commentId}...`);
+            await withRetry(
+              () => sendInstagramPublicReply(accessToken, commentId, automation.public_reply!),
+              {},
+              (err) => err instanceof InstagramApiError && err.isPermanent
+            );
             publicReplyOk = true;
-          } catch (err) { errorMsg = err instanceof Error ? err.message : "Public reply failed"; }
+          } catch (err) {
+            errorMsg = err instanceof Error ? err.message : "Public reply failed";
+            console.error(`[Webhook] Public reply error:`, errorMsg);
+          }
         }
 
-        if (automation.dm_enabled && automation.private_message && commenterId) {
+        // 3. Private DM (Private reply referencing comment_id)
+        if (automation.dm_enabled && automation.private_message) {
           try {
+            console.log(`[Webhook] Sending private DM for comment ${commentId} to ${commenterUsername || commenterId}...`);
             const vars = buildMessageVariables({
-              firstName: commenterUsername?.split("_")[0], username: commenterUsername,
-              productName: product?.name, productPrice: product?.price ? `${product.currency === "INR" ? "₹" : "$"}${product.price}` : undefined,
+              firstName: commenterUsername?.split("_")[0] || commenterUsername,
+              username: commenterUsername,
+              productName: product?.name,
+              productPrice: product?.price ? `${product.currency === "INR" ? "₹" : "$"}${product.price}` : undefined,
               productUrl: product?.url || undefined,
             });
             const message = interpolateTemplate(automation.private_message, vars);
-            await withRetry(() => sendDirectMessage(accessToken, igUserId, commenterId, message), {},
-              (err) => err instanceof InstagramApiError && err.isPermanent);
+            await withRetry(
+              () => sendInstagramPrivateReply(accessToken, igUserId, commentId, message, commenterId),
+              {},
+              (err) => err instanceof InstagramApiError && err.isPermanent
+            );
             dmOk = true;
           } catch (err) {
             const msg = err instanceof Error ? err.message : "DM failed";
             errorMsg = errorMsg ? `${errorMsg}; ${msg}` : msg;
+            console.error(`[Webhook] Private DM error:`, msg);
           }
         }
 
@@ -144,7 +204,7 @@ async function processWebhookAsync(payload: WebhookPayload) {
         await (supabase.from("automation_events") as any).update({
           status: finalStatus,
           public_reply_status: automation.public_reply_enabled ? (publicReplyOk ? "success" : "failed") : null,
-          dm_status: (automation.dm_enabled && commenterId) ? (dmOk ? "success" : "failed") : null,
+          dm_status: automation.dm_enabled ? (dmOk ? "success" : "failed") : null,
           error_message: errorMsg, processed_at: new Date().toISOString(),
         } as never).eq("id", event.id);
 
@@ -157,28 +217,4 @@ async function processWebhookAsync(payload: WebhookPayload) {
       }
     }
   }
-}
-
-async function sendPublicReply(accessToken: string, commentId: string, message: string) {
-  const response = await fetch(`https://graph.facebook.com/v19.0/${commentId}/replies`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, access_token: accessToken }),
-  });
-  if (!response.ok) {
-    const err = await response.json();
-    throw new InstagramApiError(err?.error?.message || "Public reply failed", err?.error?.code || response.status, err?.error?.type || "unknown", [100,200,190,10].includes(err?.error?.code));
-  }
-  return response.json();
-}
-
-async function sendDirectMessage(accessToken: string, igUserId: string, recipientId: string, message: string) {
-  const response = await fetch(`https://graph.facebook.com/v19.0/${igUserId}/messages`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ recipient: { id: recipientId }, message: { text: message }, access_token: accessToken }),
-  });
-  if (!response.ok) {
-    const err = await response.json();
-    throw new InstagramApiError(err?.error?.message || "DM failed", err?.error?.code || response.status, err?.error?.type || "unknown", [100,200,190,10].includes(err?.error?.code));
-  }
-  return response.json();
 }
