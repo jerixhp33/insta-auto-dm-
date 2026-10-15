@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
   try { payload = JSON.parse(rawBody); }
   catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  processWebhookAsync(payload).catch(err => console.error("[Webhook] Processing Error:", err?.message || err));
+  try {
+    await processWebhookAsync(payload);
+  } catch (err: any) {
+    console.error("[Webhook] Processing Error:", err?.message || err);
+  }
   return NextResponse.json({ received: true }, { status: 200 });
 }
 
@@ -80,6 +84,12 @@ async function processWebhookAsync(payload: WebhookPayload) {
 
       const account = rawAccount as AccountRow | null;
       if (!account) { console.warn(`[Webhook] No connected account found for IG user ${igUserId}`); continue; }
+
+      // Skip comments made by the account itself to prevent loop
+      if (commenterId === igUserId || (account.username && commenterUsername === account.username)) {
+        console.log(`[Webhook] Skipping self-comment by @${account.username}`);
+        continue;
+      }
 
       const workspaceId = account.workspace_id;
       const isNew = await checkAndMarkProcessed(`comment:${commentId}`, workspaceId);
