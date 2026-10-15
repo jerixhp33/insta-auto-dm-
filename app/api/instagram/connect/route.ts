@@ -90,8 +90,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
+  const proto = request.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
+  const origin = `${proto}://${host}`;
   const providerParam = request.nextUrl.searchParams.get("provider");
   const provider = providerParam === "facebook" ? "facebook" : "instagram";
   const state = await createOAuthState(user.id, workspaceId);
-  return NextResponse.redirect(generateOAuthUrl(state, provider));
+  return NextResponse.redirect(generateOAuthUrl(state, provider, origin));
 }

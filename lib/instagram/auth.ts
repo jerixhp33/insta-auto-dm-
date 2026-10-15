@@ -20,17 +20,19 @@ const IG_REQUIRED_SCOPES = [
 
 export const getMetaAppId = () => process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "1647540866708249";
 export const getMetaAppSecret = () => process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "";
-export const getMetaRedirectUri = () => {
+export const getMetaRedirectUri = (origin?: string) => {
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
+  if (origin && !origin.includes("localhost")) {
+    return `${origin.replace(/\/$/, "")}/api/instagram/callback`;
+  }
   if (process.env.NEXT_PUBLIC_APP_URL) return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/instagram/callback`;
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/instagram/callback`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/instagram/callback`;
-  return "http://localhost:3000/api/instagram/callback";
+  if (origin) return `${origin.replace(/\/$/, "")}/api/instagram/callback`;
+  return "https://insta-auto-dm-six.vercel.app/api/instagram/callback";
 };
 
-export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "instagram"): string {
+export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "instagram", origin?: string): string {
   const appId = getMetaAppId();
-  const redirectUri = getMetaRedirectUri();
+  const redirectUri = getMetaRedirectUri(origin);
 
   if (provider === "facebook") {
     const params = new URLSearchParams({
