@@ -14,17 +14,22 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleSync(request: NextRequest) {
-  const supabase = await createServiceClient();
+  try {
+    const supabase = await createServiceClient();
 
-  // 1. Get all connected Instagram accounts
-  const { data: accounts } = await (supabase
-    .from("instagram_accounts") as any)
-    .select("id, workspace_id, encrypted_access_token, instagram_user_id, username")
-    .eq("status", "connected");
+    // 1. Get all connected Instagram accounts
+    const { data: accounts, error: accErr } = await (supabase
+      .from("instagram_accounts") as any)
+      .select("id, workspace_id, encrypted_access_token, instagram_user_id, username")
+      .eq("status", "connected");
 
-  if (!accounts?.length) {
-    return NextResponse.json({ message: "No connected accounts found" }, { status: 200 });
-  }
+    if (accErr) {
+      return NextResponse.json({ error: accErr.message }, { status: 500 });
+    }
+
+    if (!accounts?.length) {
+      return NextResponse.json({ message: "No connected accounts found" }, { status: 200 });
+    }
 
   const results: any[] = [];
 
@@ -146,5 +151,9 @@ async function handleSync(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, processed: results.length, details: results });
+    return NextResponse.json({ success: true, processed: results.length, details: results });
+  } catch (err: any) {
+    console.error("[Sync Error]:", err?.message || err);
+    return NextResponse.json({ error: err?.message || "Internal error during sync" }, { status: 500 });
+  }
 }
