@@ -119,10 +119,10 @@ export default function NewAutomationPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedAccountId && targetType === "specific") {
+    if (selectedAccountId) {
       fetchMedia(selectedAccountId);
     }
-  }, [selectedAccountId, targetType, fetchMedia]);
+  }, [selectedAccountId, fetchMedia]);
 
   const addKeyword = () => {
     const k = keyword.trim().toLowerCase();
