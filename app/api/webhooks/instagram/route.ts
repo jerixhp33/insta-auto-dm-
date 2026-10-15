@@ -94,20 +94,20 @@ interface AutomationScopedRow { instagram_media_id: string | null; reply_to_all?
 interface EventRow { id: string; }
 
 async function processWebhookAsync(payload: WebhookPayload) {
-  if (payload.object !== "instagram") return;
+  if (payload.object !== "instagram" && payload.object !== "page") return;
   const supabase = await createServiceClient();
 
   for (const entry of payload.entry || []) {
     const igUserId = entry.id;
     for (const change of entry.changes || []) {
-      if (change.field !== "comments") continue;
+      if (change.field !== "comments" && change.field !== "feed") continue;
       const { value } = change;
-      const commentId = value.id || value.comment_id;
+      const commentId = value.id || value.comment_id || (value as any).post_id;
       const mediaId = value.media?.id || value.media_id;
-      const commentText = value.text;
+      const commentText = value.text || (value as any).message;
       const commenterId = value.from?.id;
       const commenterUsername = value.from?.username;
-      const parentId = value.parent_id;
+      const parentId = value.parent_id || (value as any).parent_id;
       if (!commentId || !commentText) continue;
 
       // Ignore sub-replies to prevent recursive loops with the bot
@@ -225,68 +225,75 @@ async function processWebhookAsync(payload: WebhookPayload) {
         // Update trigger count
         await (supabase.from("automations") as any).update({ trigger_count: automation.trigger_count + 1 } as never).eq("id", automation.id).catch(() => {});
 
-        // 1. Auto-Like the user's comment (and media)
-        console.log(`[Webhook] Auto-liking comment ${commentId}...`);
-        await likeInstagramComment(accessToken, commentId, igUserId).catch(err => console.warn("[Webhook] Auto-like comment warning:", err));
-        if (mediaId) {
-          await likeInstagramMedia(accessToken, mediaId, igUserId).catch(err => console.warn("[Webhook] Auto-like media warning:", err));
-        }
+        // 1. Prepare message variables for DM
+        const vars = buildMessageVariables({
+          firstName: commenterUsername?.split("_")[0] || commenterUsername,
+          username: commenterUsername,
+          productName: product?.name,
+          productPrice: product?.price ? `${product.currency === "INR" ? "₹" : "$"}${product.price}` : undefined,
+          productUrl: product?.url || undefined,
+        });
+        const dmMessage = automation.private_message ? interpolateTemplate(automation.private_message, vars) : null;
 
-        let publicReplyOk = false, dmOk = false;
-        let errorMsg: string | null = null;
+        // 2. Dispatch all actions concurrently (Likes, Public Reply, Private DM) for lightning-fast execution
+        const tasks: Promise<any>[] = [];
 
-        // 2. Public reply to the comment
+        // Task A: Auto-likes (silent background)
+        tasks.push(
+          Promise.allSettled([
+            likeInstagramComment(accessToken, commentId, igUserId),
+            mediaId ? likeInstagramMedia(accessToken, mediaId, igUserId) : Promise.resolve(),
+          ]).catch(() => null)
+        );
+
+        // Task B: Public Reply
+        let publicReplyPromise: Promise<boolean>;
         if (automation.public_reply_enabled && automation.public_reply) {
-          try {
-            console.log(`[Webhook] Sending public reply to comment ${commentId}...`);
-            await withRetry(
-              () => sendInstagramPublicReply(accessToken, commentId, automation.public_reply!),
-              {},
-              (err) => err instanceof InstagramApiError && err.isPermanent
-            );
-            publicReplyOk = true;
-          } catch (err) {
-            errorMsg = err instanceof Error ? err.message : "Public reply failed";
-            console.error(`[Webhook] Public reply error:`, errorMsg);
-          }
+          publicReplyPromise = withRetry(
+            () => sendInstagramPublicReply(accessToken, commentId, automation.public_reply!),
+            {},
+            (err) => err instanceof InstagramApiError && err.isPermanent
+          )
+            .then(() => true)
+            .catch((err) => {
+              console.error("[Webhook] Public reply failed:", err?.message || err);
+              return false;
+            });
+        } else {
+          publicReplyPromise = Promise.resolve(false);
         }
 
-        // 3. Private DM
-        if (automation.dm_enabled && automation.private_message) {
-          if (isSelfComment) {
-            console.log("[Webhook] Cannot send private DM to self (Meta API restriction). Skipping DM.");
-            dmOk = false;
-          } else {
-            try {
-              console.log(`[Webhook] Sending private DM for comment ${commentId} to ${commenterUsername || commenterId}...`);
-              const vars = buildMessageVariables({
-                firstName: commenterUsername?.split("_")[0] || commenterUsername,
-                username: commenterUsername,
-                productName: product?.name,
-                productPrice: product?.price ? `${product.currency === "INR" ? "₹" : "$"}${product.price}` : undefined,
-                productUrl: product?.url || undefined,
-              });
-              const message = interpolateTemplate(automation.private_message, vars);
-              await withRetry(
-                () => sendInstagramPrivateReply(accessToken, igUserId, commentId, message, commenterId),
-                {},
-                (err) => err instanceof InstagramApiError && err.isPermanent
-              );
-              dmOk = true;
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : "DM failed";
-              errorMsg = errorMsg ? `${errorMsg}; ${msg}` : msg;
-              console.error(`[Webhook] Private DM error:`, msg);
-            }
-          }
+        // Task C: Private DM
+        let dmPromise: Promise<boolean>;
+        if (automation.dm_enabled && dmMessage && !isSelfComment) {
+          dmPromise = withRetry(
+            () => sendInstagramPrivateReply(accessToken, igUserId, commentId, dmMessage, commenterId),
+            {},
+            (err) => err instanceof InstagramApiError && err.isPermanent
+          )
+            .then(() => true)
+            .catch((err) => {
+              console.error("[Webhook] Private DM failed:", err?.message || err);
+              return false;
+            });
+        } else {
+          dmPromise = Promise.resolve(false);
         }
+
+        // Await all concurrent tasks
+        const [, publicReplyOk, dmOk] = await Promise.all([
+          tasks[0],
+          publicReplyPromise,
+          dmPromise,
+        ]);
 
         const finalStatus = (publicReplyOk || dmOk) ? "success" : "failed";
         await (supabase.from("automation_events") as any).update({
           status: finalStatus,
           public_reply_status: automation.public_reply_enabled ? (publicReplyOk ? "success" : "failed") : null,
           dm_status: automation.dm_enabled ? (isSelfComment ? "skipped_self" : (dmOk ? "success" : "failed")) : null,
-          error_message: errorMsg, processed_at: new Date().toISOString(),
+          error_message: !publicReplyOk && !dmOk ? "Delivery failed" : null,
+          processed_at: new Date().toISOString(),
         } as never).eq("id", event.id);
 
         const countUpdate = finalStatus === "success"
