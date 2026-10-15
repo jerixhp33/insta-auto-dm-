@@ -50,10 +50,11 @@ export async function GET(request: NextRequest) {
     // Fetch media from Instagram Graph API
     let metaMedia: InstagramMediaItem[] = [];
     try {
-      const response = await fetchInstagramUserMedia(accessToken, 50);
-      metaMedia = response.data || [];
-    } catch (fetchErr) {
-      console.warn("[Media API] Live Instagram media fetch failed, falling back to cache:", fetchErr);
+      const response = await fetchInstagramUserMedia(accessToken, rawAccount.instagram_user_id, 50);
+      metaMedia = response?.data || [];
+      console.log(`[Media API] Live media fetched for @${rawAccount.username}: ${metaMedia.length} items`);
+    } catch (fetchErr: any) {
+      console.warn("[Media API] Live Instagram media fetch failed, falling back to cache:", fetchErr?.message || fetchErr);
     }
 
     // Upsert into Supabase database

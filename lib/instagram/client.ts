@@ -186,22 +186,48 @@ export interface InstagramMediaItem {
 
 export async function fetchInstagramUserMedia(
   accessToken: string,
-  limit = 25
+  igUserId?: string,
+  limit = 50
 ): Promise<{ data: InstagramMediaItem[] }> {
-  const fields = [
-    "id",
-    "caption",
-    "media_type",
-    "media_url",
-    "thumbnail_url",
-    "permalink",
-    "timestamp",
-    "like_count",
-    "comments_count",
-  ].join(",");
+  // Safe fields supported by both Instagram User and Page access tokens
+  const safeFields = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp";
 
-  return graphApiRequest<{ data: InstagramMediaItem[] }>(
-    `/me/media?fields=${fields}&limit=${limit}`,
-    accessToken
-  );
+  // Attempt 1: /me/media with safe fields
+  try {
+    const res = await graphApiRequest<{ data: InstagramMediaItem[] }>(
+      `/me/media?fields=${safeFields}&limit=${limit}`,
+      accessToken
+    );
+    if (res && Array.isArray(res.data)) {
+      return res;
+    }
+  } catch (err1: any) {
+    console.warn("[Instagram Media Fetch] /me/media failed:", err1?.message || err1);
+  }
+
+  // Attempt 2: If igUserId provided, try /{igUserId}/media
+  if (igUserId) {
+    try {
+      const res = await graphApiRequest<{ data: InstagramMediaItem[] }>(
+        `/${igUserId}/media?fields=${safeFields}&limit=${limit}`,
+        accessToken
+      );
+      if (res && Array.isArray(res.data)) {
+        return res;
+      }
+    } catch (err2: any) {
+      console.warn(`[Instagram Media Fetch] /${igUserId}/media failed:`, err2?.message || err2);
+    }
+  }
+
+  // Attempt 3: Core minimal fields fallback
+  try {
+    return await graphApiRequest<{ data: InstagramMediaItem[] }>(
+      `/me/media?fields=id,caption,media_type,permalink,timestamp&limit=${limit}`,
+      accessToken
+    );
+  } catch (err3: any) {
+    console.error("[Instagram Media Fetch] Minimal fields fetch failed:", err3?.message || err3);
+    throw err3;
+  }
 }

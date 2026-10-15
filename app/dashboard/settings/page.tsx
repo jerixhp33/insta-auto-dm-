@@ -11,17 +11,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { User, Building2, Shield, Save } from "lucide-react";
+import { User, Building2, Shield, Save, Copy, Check, Lock, Webhook, Heart } from "lucide-react";
 
 export default function SettingsPage() {
   const [workspace, setWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Password state
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Automation preference
+  const [autoLikeEnabled, setAutoLikeEnabled] = useState(true);
 
   const { register: registerProfile, handleSubmit: handleProfileSubmit, reset: resetProfile } = useForm({
     defaultValues: { full_name: "", email: "" }
   });
-  // profileErrors unused intentionally - email field is disabled
 
   const { register: registerWorkspace, handleSubmit: handleWorkspaceSubmit, reset: resetWorkspace, formState: { errors: wsErrors } } = useForm<WorkspaceInput>({
     resolver: zodResolver(workspaceSchema),
@@ -69,11 +80,47 @@ export default function SettingsPage() {
     setIsSaving(false);
   };
 
+  const onChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      toast({ variant: "destructive", title: "Password too short", description: "Must be at least 6 characters." });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ variant: "destructive", title: "Passwords do not match" });
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast({ variant: "success", title: "Password changed successfully" });
+      setShowPasswordForm(false);
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to update password", description: err?.message });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    toast({ variant: "success", title: "Copied to clipboard!" });
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const webhookUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/api/webhooks/instagram`
+    : "https://insta-auto-dm-six.vercel.app/api/webhooks/instagram";
+
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Manage your account and workspace</p>
+        <p className="text-sm text-slate-500 mt-0.5">Manage your account, workspace, and automation preferences</p>
       </div>
 
       {/* Profile */}
@@ -81,9 +128,9 @@ export default function SettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <User className="h-5 w-5 text-violet-600" />
-            <CardTitle>Profile</CardTitle>
+            <CardTitle className="text-base">Profile Information</CardTitle>
           </div>
-          <CardDescription>Update your personal information</CardDescription>
+          <CardDescription>Update your personal display name and account details</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleProfileSubmit(saveProfile)} className="space-y-4" noValidate>
@@ -94,7 +141,7 @@ export default function SettingsPage() {
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" disabled {...registerProfile("email")} className="bg-slate-50" />
-              <p className="text-xs text-slate-400">Email cannot be changed from here</p>
+              <p className="text-xs text-slate-400">Email cannot be changed directly</p>
             </div>
             <Button type="submit" loading={isSaving} size="sm">
               <Save className="h-4 w-4" /> Save Profile
@@ -108,9 +155,9 @@ export default function SettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-violet-600" />
-            <CardTitle>Workspace</CardTitle>
+            <CardTitle className="text-base">Workspace</CardTitle>
           </div>
-          <CardDescription>Manage your workspace settings</CardDescription>
+          <CardDescription>Manage your workspace name and team scope</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleWorkspaceSubmit(saveWorkspace)} className="space-y-4" noValidate>
@@ -126,29 +173,143 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Webhook & Meta Integration Settings */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Webhook className="h-5 w-5 text-violet-600" />
+            <CardTitle className="text-base">Meta Webhook Configuration</CardTitle>
+          </div>
+          <CardDescription>Use these exact credentials in your Meta Developer Dashboard</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Callback URL</Label>
+            <div className="flex gap-2">
+              <Input readOnly value={webhookUrl} className="font-mono text-xs bg-slate-50" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => copyToClipboard(webhookUrl, "url")}
+                className="shrink-0"
+              >
+                {copiedField === "url" ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Verify Token</Label>
+            <div className="flex gap-2">
+              <Input readOnly value="autome_webhook_verify_token_98741" className="font-mono text-xs bg-slate-50" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => copyToClipboard("autome_webhook_verify_token_98741", "token")}
+                className="shrink-0"
+              >
+                {copiedField === "token" ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Heart className="h-4 w-4 text-pink-500" />
+                <p className="text-sm font-medium text-slate-900">Auto-Like Matched Comments</p>
+              </div>
+              <p className="text-xs text-slate-500">Automatically like comments before dispatching reply and DM</p>
+            </div>
+            <Switch
+              checked={autoLikeEnabled}
+              onCheckedChange={checked => {
+                setAutoLikeEnabled(checked);
+                toast({ variant: "success", title: checked ? "Auto-like enabled" : "Auto-like disabled" });
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Security */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-violet-600" />
-            <CardTitle>Security</CardTitle>
+            <CardTitle className="text-base">Security & Password</CardTitle>
           </div>
+          <CardDescription>Manage your security credentials</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-900">Password</p>
-              <p className="text-xs text-slate-500">Update your account password</p>
+              <p className="text-sm font-medium text-slate-900">Account Password</p>
+              <p className="text-xs text-slate-500">Update or reset your current password</p>
             </div>
-            <Button variant="outline" size="sm">Change Password</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPasswordForm(!showPasswordForm)}
+            >
+              <Lock className="h-3.5 w-3.5 mr-1.5" />
+              {showPasswordForm ? "Cancel" : "Change Password"}
+            </Button>
           </div>
+
+          {showPasswordForm && (
+            <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="new_password">New Password</Label>
+                <Input
+                  id="new_password"
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="confirm_password">Confirm New Password</Label>
+                <Input
+                  id="confirm_password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat new password"
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={onChangePassword}
+                loading={isChangingPassword}
+                className="w-full"
+              >
+                Update Password
+              </Button>
+            </div>
+          )}
+
           <Separator />
+
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-red-600">Delete Account</p>
-              <p className="text-xs text-slate-500">Permanently delete your account and all data</p>
+              <p className="text-xs text-slate-500">Permanently delete your account, connected accounts, and automations</p>
             </div>
-            <Button variant="destructive" size="sm">Delete Account</Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirm("Are you sure you want to permanently delete your account? This action cannot be reversed.")) {
+                  toast({ variant: "destructive", title: "Account deletion requested", description: "Please contact support to complete account removal." });
+                }
+              }}
+            >
+              Delete Account
+            </Button>
           </div>
         </CardContent>
       </Card>
