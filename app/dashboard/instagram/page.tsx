@@ -145,22 +145,16 @@ export default async function InstagramPage(props: Props) {
               <p>✓ Secure OAuth authentication</p>
               <p>✓ Your data stays private</p>
             </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white">
+            <div className="flex flex-col items-center gap-3">
+              <Button asChild size="lg" className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 hover:opacity-90 text-white font-medium px-6 py-3 rounded-xl shadow-md">
                 <a href={`/api/instagram/connect?workspace_id=${workspaceId}&provider=facebook`}>
-                  <CheckCircle className="h-4 w-4 mr-1.5" />
-                  Connect via Facebook Page
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a href={`/api/instagram/connect?workspace_id=${workspaceId}&provider=instagram`}>
-                  <Camera className="h-4 w-4 mr-1.5" />
-                  Connect via Instagram Direct
+                  <Camera className="h-5 w-5 mr-2" />
+                  Connect Instagram Account
                 </a>
               </Button>
             </div>
-            <p className="text-xs text-slate-400 mt-3 max-w-md">
-              💡 <strong>Facebook Page</strong> is the recommended method for localhost development. Just link your Instagram account to any Facebook Page first.
+            <p className="text-xs text-slate-500 mt-4 max-w-md text-center leading-relaxed">
+              💡 <strong>Note:</strong> Meta requires your Instagram account to be linked to a Facebook Page. In your Instagram mobile app, go to <strong>Edit Profile → Page</strong> to connect or create a page.
             </p>
           </CardContent>
         </Card>
