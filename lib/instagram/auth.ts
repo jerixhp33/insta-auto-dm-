@@ -19,6 +19,7 @@ const IG_REQUIRED_SCOPES = [
 ].join(",");
 
 export const getMetaAppId = () => process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "";
+export const getMetaAppSecret = () => process.env.META_APP_SECRET || "";
 export const getMetaRedirectUri = () => {
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
   if (process.env.NEXT_PUBLIC_APP_URL) return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/instagram/callback`;
