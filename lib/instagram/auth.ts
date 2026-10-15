@@ -18,7 +18,7 @@ const IG_REQUIRED_SCOPES = [
   "instagram_business_manage_comments",
 ].join(",");
 
-export const getMetaAppId = () => process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "";
+export const getMetaAppId = () => process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "1647540866708249";
 export const getMetaAppSecret = () => process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "";
 export const getMetaRedirectUri = () => {
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
