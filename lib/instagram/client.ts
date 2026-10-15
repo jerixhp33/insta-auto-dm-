@@ -146,12 +146,22 @@ export async function sendInstagramPrivateReply(
   igUserId: string,
   commentId: string,
   message: string,
-  recipientId?: string
+  recipientId?: string,
+  quickReplies?: Array<{ title: string; payload?: string }>
 ) {
   const endpoints = [
     igUserId ? `/${igUserId}/messages` : null,
     "/me/messages",
   ].filter(Boolean) as string[];
+
+  const messagePayload: Record<string, any> = { text: message };
+  if (quickReplies && quickReplies.length > 0) {
+    messagePayload.quick_replies = quickReplies.slice(0, 13).map((qr) => ({
+      content_type: "text",
+      title: qr.title.slice(0, 20),
+      payload: qr.payload || qr.title,
+    }));
+  }
 
   let lastError: unknown;
   for (const endpoint of endpoints) {
@@ -161,7 +171,7 @@ export async function sendInstagramPrivateReply(
         method: "POST",
         body: JSON.stringify({
           recipient: { comment_id: commentId },
-          message: { text: message },
+          message: messagePayload,
         }),
       });
     } catch (err) {
@@ -176,7 +186,7 @@ export async function sendInstagramPrivateReply(
           method: "POST",
           body: JSON.stringify({
             recipient: { id: recipientId },
-            message: { text: message },
+            message: messagePayload,
           }),
         });
       } catch (err) {

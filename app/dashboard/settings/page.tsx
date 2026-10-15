@@ -37,6 +37,7 @@ export default function SettingsPage() {
   const [replyDelay, setReplyDelay] = useState(0);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiPersona, setAiPersona] = useState("Friendly boutique assistant");
+  const [geminiKey, setGeminiKey] = useState("");
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const { register: registerProfile, handleSubmit: handleProfileSubmit, reset: resetProfile } = useForm({
@@ -81,6 +82,7 @@ export default function SettingsPage() {
         setReplyDelay(s.reply_delay_seconds || 0);
         setAiEnabled(s.gemini_ai_enabled === true);
         setAiPersona(s.ai_persona_prompt || "Friendly, helpful store assistant for Instagram shoppers");
+        setGeminiKey(s.gemini_api_key || "");
       }
     };
     load();
@@ -130,6 +132,7 @@ export default function SettingsPage() {
         reply_delay_seconds: Number(replyDelay),
         gemini_ai_enabled: aiEnabled,
         ai_persona_prompt: aiPersona,
+        gemini_api_key: geminiKey.trim() || undefined,
       };
 
       const { error } = await (supabase.from("workspaces") as any)
@@ -273,16 +276,32 @@ export default function SettingsPage() {
             </div>
 
             {aiEnabled && (
-              <div className="p-3 bg-violet-50/60 border border-violet-100 rounded-xl space-y-2">
-                <Label htmlFor="ai_persona" className="text-xs font-semibold text-slate-700">AI Persona & Tone Instructions</Label>
-                <Textarea
-                  id="ai_persona"
-                  rows={2}
-                  value={aiPersona}
-                  onChange={e => setAiPersona(e.target.value)}
-                  placeholder="e.g. Friendly and cheerful boutique assistant. Answer questions concisely with emojis."
-                  className="text-xs bg-white"
-                />
+              <div className="p-3 bg-violet-50/60 border border-violet-100 rounded-xl space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="ai_persona" className="text-xs font-semibold text-slate-700">AI Persona & Tone Instructions</Label>
+                  <Textarea
+                    id="ai_persona"
+                    rows={2}
+                    value={aiPersona}
+                    onChange={e => setAiPersona(e.target.value)}
+                    placeholder="e.g. Friendly and cheerful boutique assistant. Answer questions concisely with emojis."
+                    className="text-xs bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="gemini_key" className="text-xs font-semibold text-slate-700">Custom Gemini API Key (Optional)</Label>
+                  <Input
+                    id="gemini_key"
+                    type="password"
+                    placeholder="AIzaSy... (leave blank to use system key)"
+                    value={geminiKey}
+                    onChange={e => setGeminiKey(e.target.value)}
+                    className="text-xs bg-white"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Get a free API key from Google AI Studio. Used to generate contextual replies when comments ask questions.
+                  </p>
+                </div>
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { checkAndMarkProcessed } from "@/lib/automation/idempotency";
 import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables, resolveRotatingReply } from "@/lib/automation/matcher";
 import { sendInstagramPublicReply, sendInstagramPrivateReply, likeInstagramComment } from "@/lib/instagram/client";
+import { generateSmartAiReply } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Allow full minute for sync on Vercel
@@ -105,6 +106,7 @@ async function handleSync(request: NextRequest) {
           if (!isNew) continue;
 
           // Match against automations
+          let matchedAny = false;
           for (const auto of automations) {
             const targetMediaIgId = auto.instagram_media?.instagram_media_id;
             const isScoped = !auto.reply_to_all && (!!auto.instagram_media_id || !!targetMediaIgId);
@@ -239,7 +241,51 @@ async function handleSync(request: NextRequest) {
               reply: pubOk,
               dm: dmOk,
             });
+            matchedAny = true;
             break;
+          }
+
+          // If no keyword matched, execute Gemini AI Smart Fallback if enabled
+          if (!matchedAny) {
+            const wsSettings = (account as any)?.workspaces?.settings || {};
+            if (wsSettings.gemini_ai_enabled) {
+              const aiReply = await generateSmartAiReply({
+                commentText,
+                commenterUsername,
+                personaPrompt: wsSettings.ai_persona_prompt,
+                apiKey: wsSettings.gemini_api_key,
+                products: automations.map((a: any) => a.products).filter(Boolean),
+              });
+
+              if (aiReply) {
+                if (wsSettings.auto_like_enabled !== false) {
+                  likeInstagramComment(accessToken, commentId, account.instagram_user_id).catch(() => null);
+                }
+                const sent = await sendInstagramPublicReply(accessToken, commentId, aiReply)
+                  .then(() => true)
+                  .catch(() => false);
+
+                await (supabase.from("automation_events") as any).insert({
+                  workspace_id: account.workspace_id,
+                  instagram_account_id: account.id,
+                  commenter_username: commenterUsername || null,
+                  comment_text: commentText,
+                  comment_ig_id: commentId,
+                  keyword_matched: "AI_SMART_FALLBACK",
+                  status: sent ? "success" : "failed",
+                  public_reply_status: sent ? "success" : "failed",
+                  processed_at: new Date().toISOString(),
+                }).catch(() => null);
+
+                results.push({
+                  commentId,
+                  commenterUsername,
+                  text: commentText,
+                  ai_fallback: true,
+                  reply: sent,
+                });
+              }
+            }
           }
         }
       }

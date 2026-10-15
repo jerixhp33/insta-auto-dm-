@@ -57,6 +57,11 @@ interface SimulationResult {
   };
   suggestions?: string[];
   estimated_execution_time_ms?: number;
+  ai_fallback?: {
+    enabled: boolean;
+    reply_text: string;
+    persona: string;
+  } | null;
 }
 
 export function AutomationSimulatorModal({
@@ -292,6 +297,41 @@ export function AutomationSimulatorModal({
                       </span>
                     </div>
                   </div>
+                </div>
+              ) : result.ai_fallback ? (
+                <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50/70 to-indigo-50/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-lg bg-violet-600 text-white flex items-center justify-center shadow-xs">
+                        <Sparkles className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-violet-950 flex items-center gap-2">
+                          Gemini AI Smart Fallback Triggered
+                          <Badge className="bg-violet-200/80 text-violet-800 text-[10px] border-0">
+                            Zero Dropped Inquiries
+                          </Badge>
+                        </h4>
+                        <p className="text-xs text-violet-700">
+                          Persona: <span className="font-medium italic">&quot;{result.ai_fallback.persona}&quot;</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-white border border-violet-100 p-3 shadow-2xs">
+                    <p className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-violet-600" />
+                      AI Generated Contextual Reply:
+                    </p>
+                    <div className="rounded-lg bg-violet-50/60 p-2.5 text-xs text-slate-800 font-sans leading-relaxed border border-violet-100/50">
+                      &ldquo;{result.ai_fallback.reply_text}&rdquo;
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-violet-700">
+                    💡 <em>Because no keyword matched, the AI assistant formulated this personalized reply aligned with your brand persona and store catalog.</em>
+                  </p>
                 </div>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 space-y-2">

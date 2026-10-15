@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables, resolveRotatingReply } from "@/lib/automation/matcher";
+import { generateSmartAiReply } from "@/lib/ai/gemini";
 
 export async function POST(request: NextRequest) {
   try {
@@ -134,10 +135,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // No keyword matched
+    // No keyword matched: Check if Gemini AI Fallback is enabled in workspace
+    const { data: wsRecord } = await (supabase
+      .from("workspaces") as any)
+      .select("settings")
+      .eq("id", member.workspace_id)
+      .maybeSingle();
+
+    const wsSettings = wsRecord?.settings || {};
+    let aiFallbackReply: string | null = null;
+
+    if (wsSettings.gemini_ai_enabled) {
+      aiFallbackReply = await generateSmartAiReply({
+        commentText: comment_text,
+        commenterUsername: commenter_username,
+        personaPrompt: wsSettings.ai_persona_prompt,
+        apiKey: wsSettings.gemini_api_key,
+        products: (automations as any[])
+          .map((a) => a.products)
+          .filter(Boolean),
+      });
+    }
+
     return NextResponse.json({
       matched: false,
-      message: `No active automation keywords matched "${comment_text}".`,
+      ai_fallback: aiFallbackReply
+        ? {
+            enabled: true,
+            reply_text: aiFallbackReply,
+            persona: wsSettings.ai_persona_prompt || "Friendly boutique assistant",
+          }
+        : null,
+      message: aiFallbackReply
+        ? `No static keyword matched "${comment_text}", but Gemini AI generated an intelligent response!`
+        : `No active automation keywords matched "${comment_text}".`,
       tested_automations_count: automations.length,
       suggestions: automations.flatMap((a: any) =>
         (a.automation_keywords || []).map((k: any) => k.keyword)
