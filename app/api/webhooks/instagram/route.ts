@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { validateWebhookSignature } from "@/lib/security/webhook";
 import { checkAndMarkProcessed } from "@/lib/automation/idempotency";
-import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables } from "@/lib/automation/matcher";
+import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables, resolveRotatingReply } from "@/lib/automation/matcher";
 import { decrypt } from "@/lib/encryption";
 import { withRetry } from "@/lib/automation/retry";
 import {
@@ -235,22 +235,37 @@ async function processWebhookAsync(payload: WebhookPayload) {
         });
         const dmMessage = automation.private_message ? interpolateTemplate(automation.private_message, vars) : null;
 
+        const { data: wsData } = await (supabase.from("workspaces") as any)
+          .select("settings")
+          .eq("id", workspaceId)
+          .maybeSingle();
+        const wsSettings = wsData?.settings || {};
+        const autoLike = wsSettings.auto_like_enabled !== false;
+        const replyDelaySec = wsSettings.reply_delay_seconds || 0;
+
+        if (replyDelaySec > 0) {
+          await new Promise((r) => setTimeout(r, Math.min(replyDelaySec * 1000, 10000)));
+        }
+
         // 2. Dispatch all actions concurrently (Likes, Public Reply, Private DM) for lightning-fast execution
         const tasks: Promise<any>[] = [];
 
         // Task A: Auto-likes (silent background)
-        tasks.push(
-          Promise.allSettled([
-            likeInstagramComment(accessToken, commentId, igUserId),
-            mediaId ? likeInstagramMedia(accessToken, mediaId, igUserId) : Promise.resolve(),
-          ]).catch(() => null)
-        );
+        if (autoLike) {
+          tasks.push(
+            Promise.allSettled([
+              likeInstagramComment(accessToken, commentId, igUserId),
+              mediaId ? likeInstagramMedia(accessToken, mediaId, igUserId) : Promise.resolve(),
+            ]).catch(() => null)
+          );
+        }
 
         // Task B: Public Reply
         let publicReplyPromise: Promise<boolean>;
         if (automation.public_reply_enabled && automation.public_reply) {
+          const publicReplyText = resolveRotatingReply(automation.public_reply);
           publicReplyPromise = withRetry(
-            () => sendInstagramPublicReply(accessToken, commentId, automation.public_reply!),
+            () => sendInstagramPublicReply(accessToken, commentId, publicReplyText),
             {},
             (err) => err instanceof InstagramApiError && err.isPermanent
           )

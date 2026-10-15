@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/encryption";
 import { checkAndMarkProcessed } from "@/lib/automation/idempotency";
-import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables } from "@/lib/automation/matcher";
+import { matchesAnyKeyword, interpolateTemplate, buildMessageVariables, resolveRotatingReply } from "@/lib/automation/matcher";
 import { sendInstagramPublicReply, sendInstagramPrivateReply, likeInstagramComment } from "@/lib/instagram/client";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ async function handleSync(request: NextRequest) {
     // 1. Get all connected Instagram accounts
     const { data: accounts, error: accErr } = await (supabase
       .from("instagram_accounts") as any)
-      .select("id, workspace_id, encrypted_access_token, instagram_user_id, username")
+      .select("id, workspace_id, encrypted_access_token, instagram_user_id, username, workspaces(settings)")
       .eq("status", "connected");
 
     if (accErr) {
@@ -124,15 +124,27 @@ async function handleSync(request: NextRequest) {
               `[Sync Engine] Active match! comment "${commentText}" on media ${media.id} triggered "${auto.name}"`
             );
 
-            // Like comment silently in background
-            likeInstagramComment(accessToken, commentId, account.instagram_user_id).catch(() => null);
+            const wsSettings = (account as any)?.workspaces?.settings || {};
+            const autoLike = wsSettings.auto_like_enabled !== false;
+            const replyDelaySec = wsSettings.reply_delay_seconds || 0;
+
+            // Like comment silently in background if enabled
+            if (autoLike) {
+              likeInstagramComment(accessToken, commentId, account.instagram_user_id).catch(() => null);
+            }
+
+            // Respect configured reply delay (capped at 10s for poller responsiveness)
+            if (replyDelaySec > 0) {
+              await new Promise((r) => setTimeout(r, Math.min(replyDelaySec * 1000, 10000)));
+            }
 
             // Dispatch Public Reply and DM concurrently
             const tasks: Promise<boolean>[] = [];
 
             if (auto.public_reply_enabled && auto.public_reply) {
+              const replyText = resolveRotatingReply(auto.public_reply);
               tasks.push(
-                sendInstagramPublicReply(accessToken, commentId, auto.public_reply)
+                sendInstagramPublicReply(accessToken, commentId, replyText)
                   .then(() => true)
                   .catch((err) => {
                     console.warn(`[Sync Engine] Public reply error:`, err?.message || err);

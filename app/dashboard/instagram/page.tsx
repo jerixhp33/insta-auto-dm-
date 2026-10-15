@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Camera, Plus, RefreshCw, Unlink, CheckCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { AccountCardActions } from "@/components/instagram/account-card-actions";
+import { SystemHealthCard } from "@/components/instagram/system-health-card";
 
 interface Props {
   searchParams?: Promise<{
@@ -156,6 +157,9 @@ export default async function InstagramPage(props: Props) {
           </CardContent>
         </Card>
       )}
+
+      {/* Engine Health & Diagnostics */}
+      <SystemHealthCard />
 
       {/* API info card */}
       <Card className="bg-slate-50 border-slate-200">

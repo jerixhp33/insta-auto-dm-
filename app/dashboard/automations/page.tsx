@@ -7,6 +7,7 @@ import { Zap, Plus, MoreVertical, TrendingUp, MessageCircle, Mail, Layers, Video
 import Link from "next/link";
 import { SyncNowButton } from "@/components/automation/sync-now-button";
 import { AutomationCardActions, AutomationToggleButton } from "@/components/automation/automation-card-actions";
+import { AutomationSimulatorModal } from "@/components/automation/automation-simulator-modal";
 
 interface MemberRow { workspace_id: string; }
 interface AutomationRow {
@@ -52,6 +53,7 @@ export default async function AutomationsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
+          <AutomationSimulatorModal automationsList={automations.map(a => ({ id: a.id, name: a.name }))} />
           <SyncNowButton />
           <Button asChild><Link href="/dashboard/automations/new"><Plus className="h-4 w-4" />New Automation</Link></Button>
         </div>

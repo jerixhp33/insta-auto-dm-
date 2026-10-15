@@ -50,3 +50,31 @@ export function buildMessageVariables(params: {
     product_url: params.productUrl || "",
   };
 }
+
+/**
+ * Resolves rotating replies (spin-tax `{A|B|C}` or multiline variations)
+ * to prevent Instagram's spam filters from flagging identical repetitive replies.
+ */
+export function resolveRotatingReply(text: string): string {
+  if (!text) return "";
+
+  // 1. Resolve spin-tax blocks: {variation1|variation2|variation3}
+  let resolved = text.replace(/\{([^{}]+)\}/g, (_, choices) => {
+    const parts = choices.split("|").map((p: string) => p.trim()).filter(Boolean);
+    if (!parts.length) return "";
+    return parts[Math.floor(Math.random() * parts.length)];
+  });
+
+  // 2. If text contains separate lines and was not using spin-tax, pick one line randomly
+  const lines = resolved
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length > 1 && !text.includes("{")) {
+    return lines[Math.floor(Math.random() * lines.length)];
+  }
+
+  return resolved.trim();
+}
+

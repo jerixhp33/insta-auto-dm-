@@ -18,7 +18,8 @@ import { toast } from "@/hooks/use-toast";
 import {
   Zap, X, Plus, ChevronRight, ChevronLeft,
   MessageCircle, Mail, Package, CheckCircle, Smartphone,
-  Layers, Video, Image as ImageIcon, RefreshCw, ExternalLink, Heart
+  Layers, Video, Image as ImageIcon, RefreshCw, ExternalLink, Heart,
+  Sparkles, ShieldCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -620,14 +621,46 @@ export default function NewAutomationPage() {
                   </div>
                 </CardHeader>
                 {publicReplyEnabled && (
-                  <CardContent>
+                  <CardContent className="space-y-3">
                     <Textarea
                       value={publicReply}
                       onChange={e => setPublicReply(e.target.value)}
                       placeholder="Public reply to show on comment..."
                       rows={3}
                     />
-                    <p className="text-xs text-slate-400 mt-1.5">{publicReply.length}/2200 characters</p>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>{publicReply.length}/2200 characters</span>
+                      <span className="flex items-center gap-1 text-violet-600 font-medium text-[11px]">
+                        <Sparkles className="h-3 w-3" />
+                        Anti-Spam Spin-tax Supported
+                      </span>
+                    </div>
+
+                    <div className="rounded-xl bg-violet-50/70 border border-violet-100 p-2.5 text-xs text-violet-900 space-y-1.5">
+                      <p className="font-semibold flex items-center gap-1 text-[11px]">
+                        <ShieldCheck className="h-3.5 w-3.5 text-violet-600" />
+                        Rotate replies to avoid Instagram spam filters:
+                      </p>
+                      <p className="text-[11px] text-slate-600">
+                        Use <code>{`{variation 1|variation 2|variation 3}`}</code> or enter different lines. The engine randomly selects one per comment.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setPublicReply("{Sent to your DM! ❤️|Check your inbox! ✨|Details sent via DM 👋}")}
+                          className="rounded-lg bg-white border border-violet-200 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-100 transition-colors shadow-2xs"
+                        >
+                          Insert Spin-Tax Preset 1
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPublicReply("{Just sent you a DM! 🚀|Sent! Check your inbox ✨|DM sent! Let me know if you get it!}")}
+                          className="rounded-lg bg-white border border-violet-200 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-100 transition-colors shadow-2xs"
+                        >
+                          Insert Spin-Tax Preset 2
+                        </button>
+                      </div>
+                    </div>
                   </CardContent>
                 )}
               </Card>
