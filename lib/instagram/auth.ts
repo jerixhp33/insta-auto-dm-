@@ -18,8 +18,8 @@ const IG_REQUIRED_SCOPES = [
   "instagram_business_manage_comments",
 ].join(",");
 
-export const getMetaAppId = () => process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "";
-export const getMetaAppSecret = () => process.env.META_APP_SECRET || "";
+export const getMetaAppId = () => process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || "";
+export const getMetaAppSecret = () => process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "";
 export const getMetaRedirectUri = () => {
   if (process.env.META_REDIRECT_URI) return process.env.META_REDIRECT_URI;
   if (process.env.NEXT_PUBLIC_APP_URL) return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/instagram/callback`;
@@ -28,7 +28,7 @@ export const getMetaRedirectUri = () => {
   return "http://localhost:3000/api/instagram/callback";
 };
 
-export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "facebook"): string {
+export function generateOAuthUrl(state: string, provider: "instagram" | "facebook" = "instagram"): string {
   const appId = getMetaAppId();
   const redirectUri = getMetaRedirectUri();
 

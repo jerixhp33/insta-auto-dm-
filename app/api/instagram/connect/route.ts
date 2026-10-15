@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
   }
 
   const providerParam = request.nextUrl.searchParams.get("provider");
-  const provider = providerParam === "instagram" ? "instagram" : "facebook";
+  const provider = providerParam === "facebook" ? "facebook" : "instagram";
   const state = await createOAuthState(user.id, workspaceId);
   return NextResponse.redirect(generateOAuthUrl(state, provider));
 }

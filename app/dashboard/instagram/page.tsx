@@ -147,14 +147,14 @@ export default async function InstagramPage(props: Props) {
             </div>
             <div className="flex flex-col items-center gap-3">
               <Button asChild size="lg" className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 hover:opacity-90 text-white font-medium px-6 py-3 rounded-xl shadow-md">
-                <a href={`/api/instagram/connect?workspace_id=${workspaceId}&provider=facebook`}>
+                <a href={`/api/instagram/connect?workspace_id=${workspaceId}`}>
                   <Camera className="h-5 w-5 mr-2" />
-                  Connect Instagram Account
+                  Connect with Instagram
                 </a>
               </Button>
             </div>
             <p className="text-xs text-slate-500 mt-4 max-w-md text-center leading-relaxed">
-              💡 <strong>Note:</strong> Meta requires your Instagram account to be linked to a Facebook Page. In your Instagram mobile app, go to <strong>Edit Profile → Page</strong> to connect or create a page.
+              Log in directly with your Instagram Business or Creator account to grant permissions for DM automation and comment replies.
             </p>
           </CardContent>
         </Card>
